@@ -14,8 +14,8 @@ folder imports the other or requires a particular application.
 ## What it is not
 
 `realtime-core` is not a WebSocket framework, broker client, presence product, database, durable
-log, authorization system, serializer, or distributed consensus protocol. It contains no Ganbate,
-casino, lobby, game, UI, or application channel concepts.
+log, authorization system, serializer, or distributed consensus protocol. It contains no product,
+UI, transport-route, or application channel concepts.
 
 Applications remain responsible for:
 
