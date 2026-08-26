@@ -1,0 +1,24 @@
+[package]
+name = "realtime-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["Abraham Joongwhan Ahn"]
+description = "Transport-neutral realtime subscriptions, sequencing, recovery, and command receipts"
+license = "MIT"
+repository = "https://github.com/abrahamahn/realtime-core"
+homepage = "https://github.com/abrahamahn/realtime-core"
+readme = "README.md"
+keywords = ["realtime", "subscriptions", "recovery", "websocket", "events"]
+categories = ["data-structures", "network-programming"]
+exclude = ["target/"]
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "deny"
+pedantic = "deny"
