@@ -1,10 +1,10 @@
 [package]
 name = "realtime-core"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Abraham Joongwhan Ahn"]
-description = "Transport-neutral realtime subscriptions, sequencing, recovery, and command receipts"
+description = "Transport-neutral realtime subscriptions and epoch-aware recovery"
 license = "MIT"
 repository = "https://github.com/abrahamahn/realtime-core"
 homepage = "https://github.com/abrahamahn/realtime-core"

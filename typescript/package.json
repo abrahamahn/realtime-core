@@ -1,7 +1,7 @@
 {
   "name": "@abrahamahn/realtime-core",
-  "version": "0.1.0",
-  "description": "Transport-neutral realtime subscriptions, sequencing, recovery, and command receipts",
+  "version": "0.2.0",
+  "description": "Transport-neutral realtime subscriptions and epoch-aware recovery",
   "type": "module",
   "sideEffects": false,
   "license": "MIT",

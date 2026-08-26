@@ -12,5 +12,8 @@ mod subscriptions;
 pub use backoff::{ReconnectBackoffPolicy, reconnect_delay_ms};
 pub use envelopes::{CommandEnvelope, CommandReceipt, DeltaEnvelope, SnapshotEnvelope};
 pub use error::RealtimeError;
-pub use recovery::{DeliveryEntry, DeliveryLog, DeliveryRecovery, MAX_DELIVERY_SEQUENCE};
+pub use recovery::{
+    DeliveryCursor, DeliveryCursorTransition, DeliveryEntry, DeliveryLog, DeliveryRecovery,
+    MAX_DELIVERY_SEQUENCE, SnapshotRequiredReason, advance_delivery_cursor,
+};
 pub use subscriptions::{SubscriptionRegistry, SubscriptionStats};

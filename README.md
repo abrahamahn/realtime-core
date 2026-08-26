@@ -1,6 +1,6 @@
 # realtime-core
 
-`realtime-core` is a small, application-independent foundation for authoritative realtime systems.
+`realtime-core` is a focused, application-independent foundation for authoritative realtime systems.
 It provides the deterministic state that sits behind transports: subscription indexes, ordered
 delivery cursors, bounded replay, snapshot-required detection, reconnect backoff, and typed
 snapshot/delta/command/receipt boundaries.
@@ -21,7 +21,7 @@ Applications remain responsible for:
 
 - authenticating connections and authorizing every requested stream;
 - choosing WebSocket, SSE, QUIC, broker, or in-process transports;
-- persisting authoritative state, snapshots, epochs, and sequence cursors where required;
+- generating log epochs and persisting authoritative state, snapshots, and cursors where required;
 - supplying clocks and payload serialization;
 - defining domain-specific stream names, versions, commands, and results.
 
@@ -30,20 +30,22 @@ Applications remain responsible for:
 ```text
 append(stream, stream version, payload)
                     ↓
-       monotonic delivery sequence
+   application epoch + monotonic sequence
                     ↓
 recoverAfter(cursor, authorized streams)
          ↙                         ↘
  ordered replay             snapshot required
 ```
 
-`DeliveryLog` deliberately models a bounded in-memory replay window. When a cursor is no longer
-provably recoverable, it fails closed with `snapshot-required`; an application then reads its own
-authoritative snapshot source.
+`DeliveryLog` deliberately models a bounded in-memory replay window. Its cursor always carries the
+application-supplied log epoch together with the sequence. When a cursor is no longer provably
+recoverable, it fails closed with `snapshot-required`; an application then reads its authoritative
+snapshot source.
 
 ## Important invariants
 
 - Delivery sequences never repeat or wrap within a log epoch.
+- Numeric sequences from different epochs are never treated as comparable.
 - Replay entries are ordered by the global delivery sequence.
 - A gap, future cursor, or different epoch cannot be represented as an empty successful replay.
 - Capacity eviction never changes the latest sequence.
@@ -56,10 +58,16 @@ authoritative snapshot source.
 ```ts
 import { DeliveryLog } from '@abrahamahn/realtime-core';
 
-const log = new DeliveryLog<string, { revision: number }>(256);
+const log = new DeliveryLog<string, { revision: number }>({
+  epoch: crypto.randomUUID(),
+  maxEntries: 256,
+});
 log.append('document:42', 8, { revision: 8 });
 
-const recovery = log.recoverAfter(0, new Set(['document:42']));
+const recovery = log.recoverAfter(
+  { epoch: log.latestCursor().epoch, sequence: 0 },
+  new Set(['document:42']),
+);
 if (recovery.kind === 'snapshot-required') {
   // Load an authoritative snapshot through an application-owned repository.
 }
@@ -69,12 +77,13 @@ if (recovery.kind === 'snapshot-required') {
 
 ```rust
 use std::collections::HashSet;
-use realtime_core::DeliveryLog;
+use realtime_core::{DeliveryCursor, DeliveryLog};
 
-let mut log = DeliveryLog::new(256)?;
+let mut log = DeliveryLog::new("server-start-2026-08-26", 256)?;
 log.append("document:42", 8, 8_u64)?;
 let streams = HashSet::from(["document:42"]);
-let recovery = log.recover_after(0, Some(&streams));
+let cursor = DeliveryCursor::new("server-start-2026-08-26", 0)?;
+let recovery = log.recover_after(&cursor, Some(&streams));
 # Ok::<(), realtime_core::RealtimeError>(())
 ```
 

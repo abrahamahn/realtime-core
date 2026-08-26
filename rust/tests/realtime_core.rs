@@ -1,9 +1,14 @@
 use std::collections::HashSet;
 
 use realtime_core::{
-    CommandEnvelope, CommandReceipt, DeliveryLog, DeliveryRecovery, MAX_DELIVERY_SEQUENCE,
-    RealtimeError, ReconnectBackoffPolicy, SubscriptionRegistry, reconnect_delay_ms,
+    CommandEnvelope, CommandReceipt, DeliveryCursor, DeliveryCursorTransition, DeliveryLog,
+    DeliveryRecovery, MAX_DELIVERY_SEQUENCE, RealtimeError, ReconnectBackoffPolicy,
+    SnapshotRequiredReason, SubscriptionRegistry, advance_delivery_cursor, reconnect_delay_ms,
 };
+
+fn cursor(epoch: &str, sequence: u64) -> DeliveryCursor {
+    DeliveryCursor::new(epoch, sequence).unwrap()
+}
 
 #[test]
 fn subscription_indexes_stay_consistent_in_both_directions() {
@@ -22,25 +27,25 @@ fn subscription_indexes_stay_consistent_in_both_directions() {
 
 #[test]
 fn delivery_replay_is_ordered_filtered_and_capacity_bounded() {
-    let mut log = DeliveryLog::with_initial_sequence(2, 10).unwrap();
+    let mut log = DeliveryLog::with_initial_sequence("epoch-a", 2, 10).unwrap();
     log.append("a", 1, "a1").unwrap();
     log.append("b", 1, "b1").unwrap();
     log.append("a", 2, "a2").unwrap();
     assert_eq!(log.len(), 2);
     assert_eq!(
         log.entries()
-            .map(|entry| entry.sequence)
+            .map(|entry| entry.cursor.sequence)
             .collect::<Vec<_>>(),
         vec![12, 13]
     );
 
     let streams = HashSet::from(["a"]);
     assert_eq!(
-        log.recover_after(11, Some(&streams)),
+        log.recover_after(&cursor("epoch-a", 11), Some(&streams)),
         DeliveryRecovery::Replay {
-            latest_sequence: 13,
+            latest_cursor: cursor("epoch-a", 13),
             entries: vec![realtime_core::DeliveryEntry {
-                sequence: 13,
+                cursor: cursor("epoch-a", 13),
                 stream: "a",
                 stream_version: 2,
                 payload: "a2",
@@ -50,44 +55,93 @@ fn delivery_replay_is_ordered_filtered_and_capacity_bounded() {
 }
 
 #[test]
-fn evicted_future_and_foreign_epoch_cursors_require_snapshots() {
-    let mut log = DeliveryLog::new(2).unwrap();
+fn epoch_mismatch_is_detected_even_when_numeric_sequences_are_equal() {
+    let mut log = DeliveryLog::new("epoch-b", 2).unwrap();
+    log.append("room", 1, "one").unwrap();
+
+    assert_eq!(
+        log.recover_after(&cursor("epoch-a", 1), None),
+        DeliveryRecovery::SnapshotRequired {
+            reason: SnapshotRequiredReason::EpochMismatch,
+            latest_cursor: cursor("epoch-b", 1),
+            earliest_available_sequence: 1,
+        }
+    );
+}
+
+#[test]
+fn evicted_and_future_cursors_require_snapshots_for_distinct_reasons() {
+    let empty = DeliveryLog::<&str, &str>::new("epoch-a", 2).unwrap();
+    assert!(matches!(
+        empty.recover_after(&cursor("epoch-a", 9), None),
+        DeliveryRecovery::SnapshotRequired {
+            reason: SnapshotRequiredReason::FutureCursor,
+            ..
+        }
+    ));
+
+    let mut log = DeliveryLog::new("epoch-a", 2).unwrap();
     log.append("room", 1, "one").unwrap();
     log.append("room", 2, "two").unwrap();
     log.append("room", 3, "three").unwrap();
 
     assert_eq!(
-        log.recover_after(0, None),
+        log.recover_after(&cursor("epoch-a", 0), None),
         DeliveryRecovery::SnapshotRequired {
-            latest_sequence: 3,
+            reason: SnapshotRequiredReason::HistoryGap,
+            latest_cursor: cursor("epoch-a", 3),
             earliest_available_sequence: 2,
         }
     );
     assert!(matches!(
-        log.recover_after(9, None),
-        DeliveryRecovery::SnapshotRequired { .. }
-    ));
-
-    let restored = DeliveryLog::<&str, &str>::with_initial_sequence(2, 40).unwrap();
-    assert!(matches!(
-        restored.recover_after(39, None),
-        DeliveryRecovery::SnapshotRequired { .. }
-    ));
-    assert!(matches!(
-        restored.recover_after(40, None),
-        DeliveryRecovery::Replay { entries, .. } if entries.is_empty()
+        log.recover_after(&cursor("epoch-a", 9), None),
+        DeliveryRecovery::SnapshotRequired {
+            reason: SnapshotRequiredReason::FutureCursor,
+            ..
+        }
     ));
 }
 
 #[test]
-fn sequence_exhaustion_fails_before_mutation() {
-    let mut log = DeliveryLog::with_initial_sequence(2, MAX_DELIVERY_SEQUENCE).unwrap();
+fn cursor_transitions_report_restart_boundaries() {
+    assert_eq!(
+        advance_delivery_cursor(None, &cursor("epoch-a", 2)),
+        DeliveryCursorTransition::Initialized(cursor("epoch-a", 2))
+    );
+    assert_eq!(
+        advance_delivery_cursor(Some(&cursor("epoch-a", 2)), &cursor("epoch-a", 3)),
+        DeliveryCursorTransition::Advanced(cursor("epoch-a", 3))
+    );
+    assert_eq!(
+        advance_delivery_cursor(Some(&cursor("epoch-a", 2)), &cursor("epoch-a", 1)),
+        DeliveryCursorTransition::Stale(cursor("epoch-a", 2))
+    );
+    assert_eq!(
+        advance_delivery_cursor(Some(&cursor("epoch-a", 2)), &cursor("epoch-b", 2)),
+        DeliveryCursorTransition::EpochChanged(cursor("epoch-b", 2))
+    );
+}
+
+#[test]
+fn epoch_and_sequence_exhaustion_fail_before_mutation() {
+    assert_eq!(
+        DeliveryLog::<&str, &str>::new("", 2).unwrap_err(),
+        RealtimeError::InvalidEpoch
+    );
+    assert_eq!(
+        DeliveryCursor::new(" ", 0),
+        Err(RealtimeError::InvalidEpoch)
+    );
+    let mut log = DeliveryLog::with_initial_sequence("epoch-a", 2, MAX_DELIVERY_SEQUENCE).unwrap();
     assert_eq!(
         log.append("stream", 1, "payload"),
         Err(RealtimeError::SequenceExhausted)
     );
     assert!(log.is_empty());
-    assert_eq!(log.latest_sequence(), MAX_DELIVERY_SEQUENCE);
+    assert_eq!(
+        log.latest_cursor(),
+        cursor("epoch-a", MAX_DELIVERY_SEQUENCE)
+    );
 }
 
 #[test]

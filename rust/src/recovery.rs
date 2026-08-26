@@ -6,8 +6,41 @@ use crate::RealtimeError;
 pub const MAX_DELIVERY_SEQUENCE: u64 = u64::MAX;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DeliveryEntry<Stream, Payload> {
+pub struct DeliveryCursor {
+    pub epoch: String,
     pub sequence: u64,
+}
+
+impl DeliveryCursor {
+    /// Creates a cursor with an application-supplied delivery-log epoch.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RealtimeError::InvalidEpoch`] when `epoch` is empty or only whitespace.
+    pub fn new(epoch: impl Into<String>, sequence: u64) -> Result<Self, RealtimeError> {
+        let epoch = validate_epoch(epoch)?;
+        Ok(Self { epoch, sequence })
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DeliveryCursorTransition {
+    Initialized(DeliveryCursor),
+    Advanced(DeliveryCursor),
+    Stale(DeliveryCursor),
+    EpochChanged(DeliveryCursor),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SnapshotRequiredReason {
+    EpochMismatch,
+    HistoryGap,
+    FutureCursor,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeliveryEntry<Stream, Payload> {
+    pub cursor: DeliveryCursor,
     pub stream: Stream,
     pub stream_version: u64,
     pub payload: Payload,
@@ -16,30 +49,61 @@ pub struct DeliveryEntry<Stream, Payload> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DeliveryRecovery<Stream, Payload> {
     Replay {
-        latest_sequence: u64,
+        latest_cursor: DeliveryCursor,
         entries: Vec<DeliveryEntry<Stream, Payload>>,
     },
     SnapshotRequired {
-        latest_sequence: u64,
+        reason: SnapshotRequiredReason,
+        latest_cursor: DeliveryCursor,
         earliest_available_sequence: u64,
     },
 }
 
 #[derive(Clone, Debug)]
 pub struct DeliveryLog<Stream, Payload> {
+    epoch: String,
     max_entries: usize,
     entries: VecDeque<DeliveryEntry<Stream, Payload>>,
     latest_sequence: u64,
 }
 
+fn validate_epoch(epoch: impl Into<String>) -> Result<String, RealtimeError> {
+    let epoch = epoch.into();
+    if epoch.trim().is_empty() {
+        return Err(RealtimeError::InvalidEpoch);
+    }
+    Ok(epoch)
+}
+
+/// Advances a consumer cursor and reports epoch changes explicitly.
+#[must_use]
+pub fn advance_delivery_cursor(
+    current: Option<&DeliveryCursor>,
+    incoming: &DeliveryCursor,
+) -> DeliveryCursorTransition {
+    let Some(current) = current else {
+        return DeliveryCursorTransition::Initialized(incoming.clone());
+    };
+    if current.epoch != incoming.epoch {
+        return DeliveryCursorTransition::EpochChanged(incoming.clone());
+    }
+    if incoming.sequence > current.sequence {
+        return DeliveryCursorTransition::Advanced(incoming.clone());
+    }
+    DeliveryCursorTransition::Stale(current.clone())
+}
+
 impl<Stream, Payload> DeliveryLog<Stream, Payload> {
     /// Creates an empty delivery log beginning at sequence zero.
     ///
+    /// The application owns epoch generation so the core does not depend on randomness or I/O.
+    ///
     /// # Errors
     ///
-    /// Returns [`RealtimeError::InvalidCapacity`] when `max_entries` is zero.
-    pub fn new(max_entries: usize) -> Result<Self, RealtimeError> {
-        Self::with_initial_sequence(max_entries, 0)
+    /// Returns [`RealtimeError::InvalidEpoch`] when `epoch` is empty and
+    /// [`RealtimeError::InvalidCapacity`] when `max_entries` is zero.
+    pub fn new(epoch: impl Into<String>, max_entries: usize) -> Result<Self, RealtimeError> {
+        Self::with_initial_sequence(epoch, max_entries, 0)
     }
 
     /// Creates an empty log whose next entry follows `initial_sequence`.
@@ -48,22 +112,26 @@ impl<Stream, Payload> DeliveryLog<Stream, Payload> {
     ///
     /// # Errors
     ///
-    /// Returns [`RealtimeError::InvalidCapacity`] when `max_entries` is zero.
+    /// Returns [`RealtimeError::InvalidEpoch`] when `epoch` is empty and
+    /// [`RealtimeError::InvalidCapacity`] when `max_entries` is zero.
     pub fn with_initial_sequence(
+        epoch: impl Into<String>,
         max_entries: usize,
         initial_sequence: u64,
     ) -> Result<Self, RealtimeError> {
+        let epoch = validate_epoch(epoch)?;
         if max_entries == 0 {
             return Err(RealtimeError::InvalidCapacity);
         }
         Ok(Self {
+            epoch,
             max_entries,
             entries: VecDeque::with_capacity(max_entries),
             latest_sequence: initial_sequence,
         })
     }
 
-    /// Appends one delivery without allowing its global sequence to wrap.
+    /// Appends one delivery without allowing its sequence to wrap.
     ///
     /// # Errors
     ///
@@ -83,7 +151,10 @@ impl<Stream, Payload> DeliveryLog<Stream, Payload> {
             .checked_add(1)
             .ok_or(RealtimeError::SequenceExhausted)?;
         let entry = DeliveryEntry {
-            sequence,
+            cursor: DeliveryCursor {
+                epoch: self.epoch.clone(),
+                sequence,
+            },
             stream,
             stream_version,
             payload,
@@ -99,33 +170,41 @@ impl<Stream, Payload> DeliveryLog<Stream, Payload> {
     #[must_use]
     pub fn recover_after(
         &self,
-        after_sequence: u64,
+        after: &DeliveryCursor,
         streams: Option<&HashSet<Stream>>,
     ) -> DeliveryRecovery<Stream, Payload>
     where
         Stream: Clone + Eq + Hash,
         Payload: Clone,
     {
-        let Some(first_retained) = self.entries.front() else {
-            return if after_sequence == self.latest_sequence {
-                DeliveryRecovery::Replay {
-                    latest_sequence: self.latest_sequence,
-                    entries: Vec::new(),
-                }
-            } else {
-                DeliveryRecovery::SnapshotRequired {
-                    latest_sequence: self.latest_sequence,
-                    earliest_available_sequence: self.latest_sequence.saturating_add(1),
-                }
-            };
-        };
-
-        if after_sequence > self.latest_sequence
-            || after_sequence < first_retained.sequence.saturating_sub(1)
-        {
+        let latest_cursor = self.latest_cursor();
+        let earliest_available_sequence = self.entries.front().map_or_else(
+            || self.latest_sequence.saturating_add(1),
+            |entry| entry.cursor.sequence,
+        );
+        if after.epoch != self.epoch {
             return DeliveryRecovery::SnapshotRequired {
-                latest_sequence: self.latest_sequence,
-                earliest_available_sequence: first_retained.sequence,
+                reason: SnapshotRequiredReason::EpochMismatch,
+                latest_cursor,
+                earliest_available_sequence,
+            };
+        }
+
+        let future_cursor = after.sequence > self.latest_sequence;
+        let history_gap = !future_cursor
+            && self.entries.front().map_or_else(
+                || after.sequence != self.latest_sequence,
+                |first| after.sequence < first.cursor.sequence.saturating_sub(1),
+            );
+        if history_gap || future_cursor {
+            return DeliveryRecovery::SnapshotRequired {
+                reason: if future_cursor {
+                    SnapshotRequiredReason::FutureCursor
+                } else {
+                    SnapshotRequiredReason::HistoryGap
+                },
+                latest_cursor,
+                earliest_available_sequence,
             };
         }
 
@@ -133,13 +212,13 @@ impl<Stream, Payload> DeliveryLog<Stream, Payload> {
             .entries
             .iter()
             .filter(|entry| {
-                entry.sequence > after_sequence
+                entry.cursor.sequence > after.sequence
                     && streams.is_none_or(|streams| streams.contains(&entry.stream))
             })
             .cloned()
             .collect();
         DeliveryRecovery::Replay {
-            latest_sequence: self.latest_sequence,
+            latest_cursor,
             entries,
         }
     }
@@ -160,7 +239,10 @@ impl<Stream, Payload> DeliveryLog<Stream, Payload> {
     }
 
     #[must_use]
-    pub fn latest_sequence(&self) -> u64 {
-        self.latest_sequence
+    pub fn latest_cursor(&self) -> DeliveryCursor {
+        DeliveryCursor {
+            epoch: self.epoch.clone(),
+            sequence: self.latest_sequence,
+        }
     }
 }

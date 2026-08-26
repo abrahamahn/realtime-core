@@ -5,19 +5,20 @@ dependency-free primitives for ordered delivery, bounded recovery, subscriptions
 backoff, and application-defined realtime envelopes.
 
 ```rust
-use realtime_core::{DeliveryLog, DeliveryRecovery};
+use realtime_core::{DeliveryCursor, DeliveryLog, DeliveryRecovery};
 
-let mut log = DeliveryLog::new(128)?;
+let mut log = DeliveryLog::new("server-start-2026-08-26", 128)?;
 log.append("document:42", 3, "changed")?;
-match log.recover_after(0, None) {
+let cursor = DeliveryCursor::new("server-start-2026-08-26", 0)?;
+match log.recover_after(&cursor, None) {
     DeliveryRecovery::Replay { entries, .. } => assert_eq!(entries.len(), 1),
     DeliveryRecovery::SnapshotRequired { .. } => unreachable!(),
 }
 # Ok::<(), realtime_core::RealtimeError>(())
 ```
 
-Transport, authorization, persistence, clocks, serialization, and application stream semantics are
-owned by the consuming server.
+Transport, authorization, persistence, clocks, epoch generation, serialization, and application
+stream semantics are owned by the consuming server.
 
 ```bash
 cargo build --all-targets --locked

@@ -1,14 +1,16 @@
+import type { DeliveryCursor } from './recovery.js';
+
 export interface SnapshotEnvelope<Stream, Payload> {
   readonly kind: 'snapshot';
   readonly stream: Stream;
-  readonly sequence: number;
+  readonly cursor: DeliveryCursor;
   readonly payload: Payload;
 }
 
 export interface DeltaEnvelope<Stream, Payload> {
   readonly kind: 'delta';
   readonly stream: Stream;
-  readonly sequence: number;
+  readonly cursor: DeliveryCursor;
   readonly payload: Payload;
 }
 

@@ -1,14 +1,16 @@
+use crate::recovery::DeliveryCursor;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SnapshotEnvelope<Stream, Payload> {
     pub stream: Stream,
-    pub sequence: u64,
+    pub cursor: DeliveryCursor,
     pub payload: Payload,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DeltaEnvelope<Stream, Payload> {
     pub stream: Stream,
-    pub sequence: u64,
+    pub cursor: DeliveryCursor,
     pub payload: Payload,
 }
 

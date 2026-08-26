@@ -16,18 +16,25 @@ const subscriptions = new SubscriptionRegistry<string, { readonly id: string }>(
 const connection = { id: 'connection-1' };
 subscriptions.subscribe('document:42', connection);
 
-const deliveries = new DeliveryLog<string, { readonly revision: number }>(100);
+const deliveries = new DeliveryLog<string, { readonly revision: number }>({
+  epoch: crypto.randomUUID(),
+  maxEntries: 100,
+});
 const entry = deliveries.append('document:42', 7, { revision: 7 });
-const recovery = deliveries.recoverAfter(entry.sequence - 1, new Set(['document:42']));
+const recovery = deliveries.recoverAfter(
+  { epoch: entry.cursor.epoch, sequence: entry.cursor.sequence - 1 },
+  new Set(['document:42']),
+);
 ```
 
-Applications provide transport adapters, authorization, snapshots, durable sequence ownership,
-payload serialization, and domain-specific stream/version rules. A persisted server may restore
-its cursor through the `DeliveryLog` constructor's `initialSequence` argument.
+Applications provide transport adapters, authorization, snapshots, epoch generation, durable
+cursor ownership, payload serialization, and domain-specific stream/version rules. A persisted
+server may restore its cursor through the `DeliveryLog` constructor's `initialSequence` argument.
 
 ## Invariants
 
 - Delivery sequences are positive, monotonic safe integers and never wrap.
+- An epoch and sequence travel together as one `DeliveryCursor`.
 - A replay is returned only when the requested cursor is fully represented by retained history.
 - An evicted, future, or foreign-epoch cursor requires an authoritative snapshot.
 - Subscription indexes remain consistent in both stream-to-connection directions.
