@@ -1,9 +1,14 @@
 use std::collections::HashSet;
 
 use realtime_core::{
+    ClientInvalidation, ClientRecoveryEntry, ClientRecoveryEvent, ClientRecoveryState,
     CommandEnvelope, CommandReceipt, DeliveryCursor, DeliveryCursorTransition, DeliveryLog,
-    DeliveryRecovery, MAX_DELIVERY_SEQUENCE, RealtimeError, ReconnectBackoffPolicy,
-    SnapshotRequiredReason, SubscriptionRegistry, advance_delivery_cursor, reconnect_delay_ms,
+    DeliveryRecovery, LivenessTracker, MAX_DELIVERY_SEQUENCE, RealtimeError,
+    ReconnectBackoffPolicy, ReconnectState, ReconnectStatus, SnapshotRequiredReason,
+    SubscriptionHub, SubscriptionRegistry, advance_delivery_cursor,
+    ensure_minimum_reconnect_attempt, latest_delivery_per_stream, mark_reconnect_connecting,
+    mark_reconnect_open, mark_reconnect_stable, reconnect_delay_ms, reduce_client_recovery,
+    schedule_reconnect_attempt,
 };
 
 fn cursor(epoch: &str, sequence: u64) -> DeliveryCursor {
@@ -183,4 +188,166 @@ fn command_envelopes_remain_application_defined() {
             result: 5,
         }
     );
+}
+
+#[test]
+fn subscription_hub_plans_delivery_recovery_and_disconnects_without_io() {
+    let mut hub = SubscriptionHub::new("epoch-a", 4).unwrap();
+    assert!(hub.subscribe("room:1", "connection:1"));
+    assert!(hub.subscribe("room:1", "connection:2"));
+    let plan = hub.plan_delivery("room:1", 7, "changed").unwrap();
+    assert_eq!(plan.entry.cursor, cursor("epoch-a", 1));
+    assert_eq!(plan.connections, vec!["connection:1", "connection:2"]);
+    assert_eq!(hub.stats().subscriptions, 2);
+
+    hub.plan_delivery("room:2", 1, "second").unwrap();
+    let authorized = HashSet::from(["room:2"]);
+    assert!(matches!(
+        hub.recover_after(&cursor("epoch-a", 0), Some(&authorized)),
+        DeliveryRecovery::Replay { entries, .. }
+            if entries.len() == 1 && entries[0].stream == "room:2"
+    ));
+    assert_eq!(hub.remove_connection(&"connection:1"), 1);
+}
+
+#[test]
+fn invalidation_replay_collapse_is_explicit_and_ordered_by_final_delivery() {
+    let mut log = DeliveryLog::new("epoch-a", 4).unwrap();
+    let entries = vec![
+        log.append("a", 1, ()).unwrap(),
+        log.append("b", 1, ()).unwrap(),
+        log.append("a", 2, ()).unwrap(),
+    ];
+    let latest = latest_delivery_per_stream(entries);
+    assert_eq!(
+        latest
+            .iter()
+            .map(|entry| (entry.stream, entry.stream_version, entry.cursor.sequence))
+            .collect::<Vec<_>>(),
+        vec![("b", 1, 2), ("a", 2, 3)]
+    );
+}
+
+#[test]
+fn client_recovery_reduces_continuity_and_snapshot_boundaries() {
+    let initial = ClientRecoveryState::default();
+    let continuous = reduce_client_recovery(
+        &initial,
+        &ClientRecoveryEvent::Update {
+            stream: "room:1",
+            cursor: Some(cursor("epoch-a", 2)),
+        },
+    );
+    assert_eq!(
+        continuous.invalidation,
+        ClientInvalidation::Streams(vec!["room:1"])
+    );
+    assert!(!continuous.requires_snapshot);
+
+    let changed = reduce_client_recovery(
+        &continuous.state,
+        &ClientRecoveryEvent::Update {
+            stream: "room:1",
+            cursor: Some(cursor("epoch-b", 2)),
+        },
+    );
+    assert_eq!(changed.invalidation, ClientInvalidation::All);
+    assert!(changed.requires_snapshot);
+
+    let reset = reduce_client_recovery(
+        &changed.state,
+        &ClientRecoveryEvent::<&str>::Recovery {
+            entries: Vec::new(),
+            latest_cursor: Some(cursor("epoch-c", 1)),
+            snapshot_required: true,
+        },
+    );
+    assert_eq!(reset.invalidation, ClientInvalidation::All);
+    assert_eq!(reset.state.cursor, Some(cursor("epoch-c", 1)));
+}
+
+#[test]
+fn client_recovery_deduplicates_stream_invalidations_and_advances_all_cursors() {
+    let decision = reduce_client_recovery(
+        &ClientRecoveryState {
+            cursor: Some(cursor("epoch-a", 1)),
+        },
+        &ClientRecoveryEvent::Recovery {
+            entries: vec![
+                ClientRecoveryEntry {
+                    stream: "one",
+                    cursor: Some(cursor("epoch-a", 2)),
+                },
+                ClientRecoveryEntry {
+                    stream: "two",
+                    cursor: Some(cursor("epoch-a", 3)),
+                },
+                ClientRecoveryEntry {
+                    stream: "one",
+                    cursor: Some(cursor("epoch-a", 4)),
+                },
+            ],
+            latest_cursor: Some(cursor("epoch-a", 4)),
+            snapshot_required: false,
+        },
+    );
+    assert_eq!(
+        decision.invalidation,
+        ClientInvalidation::Streams(vec!["one", "two"])
+    );
+    assert_eq!(decision.state.cursor, Some(cursor("epoch-a", 4)));
+}
+
+#[test]
+fn reconnect_state_resets_only_after_stability_and_never_wraps() {
+    let policy = ReconnectBackoffPolicy {
+        base_ms: 1_000,
+        max_ms: 15_000,
+    };
+    let first = schedule_reconnect_attempt(ReconnectState::default(), policy).unwrap();
+    assert_eq!(first.delay_ms, 1_000);
+    let open = mark_reconnect_open(mark_reconnect_connecting(first.state));
+    assert_eq!(open.attempt, 1);
+    assert_eq!(
+        schedule_reconnect_attempt(open, policy).unwrap().delay_ms,
+        2_000
+    );
+    assert_eq!(
+        mark_reconnect_stable(open),
+        ReconnectState {
+            attempt: 0,
+            status: ReconnectStatus::Stable,
+        }
+    );
+    let quarantined = ensure_minimum_reconnect_attempt(ReconnectState::default(), 4);
+    assert_eq!(
+        schedule_reconnect_attempt(quarantined, policy)
+            .unwrap()
+            .delay_ms,
+        15_000
+    );
+    assert_eq!(
+        schedule_reconnect_attempt(
+            ReconnectState {
+                attempt: u32::MAX,
+                status: ReconnectStatus::Waiting,
+            },
+            policy,
+        ),
+        Err(RealtimeError::ReconnectAttemptExhausted)
+    );
+}
+
+#[test]
+fn liveness_tracker_probes_acknowledged_connections_then_reaps_stale_ones() {
+    let mut tracker = LivenessTracker::new();
+    assert!(tracker.track("connection:1"));
+    assert!(!tracker.track("connection:1"));
+    let first = tracker.sweep();
+    assert_eq!(first.probe, vec!["connection:1"]);
+    assert!(first.stale.is_empty());
+    assert!(tracker.acknowledge(&"connection:1"));
+    assert_eq!(tracker.sweep().probe, vec!["connection:1"]);
+    assert_eq!(tracker.sweep().stale, vec!["connection:1"]);
+    assert!(tracker.is_empty());
 }

@@ -1,16 +1,17 @@
 # realtime-core
 
 The Rust implementation of [`realtime-core`](https://github.com/abrahamahn/realtime-core):
-dependency-free primitives for ordered delivery, bounded recovery, subscriptions, reconnect
-backoff, and application-defined realtime envelopes.
+dependency-free primitives for ordered delivery, subscription hubs, bounded client recovery,
+reconnect state, heartbeat liveness, and application-defined realtime envelopes.
 
 ```rust
-use realtime_core::{DeliveryCursor, DeliveryLog, DeliveryRecovery};
+use realtime_core::{DeliveryCursor, DeliveryRecovery, SubscriptionHub};
 
-let mut log = DeliveryLog::new("server-start-2026-08-26", 128)?;
-log.append("document:42", 3, "changed")?;
+let mut hub = SubscriptionHub::new("server-start-2026-08-26", 128)?;
+hub.subscribe("document:42", "browser:1");
+hub.plan_delivery("document:42", 3, "changed")?;
 let cursor = DeliveryCursor::new("server-start-2026-08-26", 0)?;
-match log.recover_after(&cursor, None) {
+match hub.recover_after(&cursor, None) {
     DeliveryRecovery::Replay { entries, .. } => assert_eq!(entries.len(), 1),
     DeliveryRecovery::SnapshotRequired { .. } => unreachable!(),
 }

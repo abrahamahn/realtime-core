@@ -1,7 +1,7 @@
 {
   "name": "@abrahamahn/realtime-core",
-  "version": "0.2.0",
-  "description": "Transport-neutral realtime subscriptions and epoch-aware recovery",
+  "version": "0.3.0",
+  "description": "Transport-neutral realtime delivery, recovery, subscription, retry, and liveness state",
   "type": "module",
   "sideEffects": false,
   "license": "MIT",

@@ -1,9 +1,9 @@
 # realtime-core
 
 `realtime-core` is a focused, application-independent foundation for authoritative realtime systems.
-It provides the deterministic state that sits behind transports: subscription indexes, ordered
-delivery cursors, bounded replay, snapshot-required detection, reconnect backoff, and typed
-snapshot/delta/command/receipt boundaries.
+It provides the deterministic state that sits behind transports: subscription hubs, ordered
+delivery cursors, bounded replay, client recovery reduction, reconnect state, heartbeat liveness,
+and typed snapshot/delta/command/receipt boundaries.
 
 - [`typescript/`](typescript/) — npm package `@abrahamahn/realtime-core`
 - [`rust/`](rust/) — Cargo crate `realtime-core` (imported as `realtime_core`)
@@ -14,8 +14,8 @@ folder imports the other or requires a particular application.
 ## What it is not
 
 `realtime-core` is not a WebSocket framework, broker client, presence product, database, durable
-log, authorization system, serializer, or distributed consensus protocol. It contains no product,
-UI, transport-route, or application channel concepts.
+log, authorization system, serializer, timer scheduler, or distributed consensus protocol. It
+contains no product, UI, transport-route, or application channel concepts.
 
 Applications remain responsible for:
 
@@ -30,7 +30,7 @@ Applications remain responsible for:
 ```text
 append(stream, stream version, payload)
                     ↓
-   application epoch + monotonic sequence
+ fan-out plan + application epoch + monotonic sequence
                     ↓
 recoverAfter(cursor, authorized streams)
          ↙                         ↘
@@ -50,22 +50,29 @@ snapshot source.
 - A gap, future cursor, or different epoch cannot be represented as an empty successful replay.
 - Capacity eviction never changes the latest sequence.
 - Subscription removal updates both indexes atomically.
+- A hub plans recipients and recovery but never sends or serializes a payload.
+- Client recovery turns any epoch discontinuity into authoritative snapshot work.
+- Reconnect state does not reset merely because a transport opened.
+- A liveness sweep probes acknowledged connections once before declaring them stale.
 - Reconnect backoff is deterministic and capped.
 - The core performs no I/O and reads no global clock or randomness.
 
 ## TypeScript example
 
 ```ts
-import { DeliveryLog } from '@abrahamahn/realtime-core';
+import { SubscriptionHub } from '@abrahamahn/realtime-core';
 
-const log = new DeliveryLog<string, { revision: number }>({
+const hub = new SubscriptionHub<string, { id: string }, { revision: number }>({
   epoch: crypto.randomUUID(),
   maxEntries: 256,
 });
-log.append('document:42', 8, { revision: 8 });
+const connection = { id: 'browser-1' };
+hub.subscribe('document:42', connection);
+const delivery = hub.planDelivery('document:42', 8, { revision: 8 });
+// A WebSocket/SSE/in-process adapter sends delivery.entry to delivery.connections.
 
-const recovery = log.recoverAfter(
-  { epoch: log.latestCursor().epoch, sequence: 0 },
+const recovery = hub.recoverAfter(
+  { epoch: delivery.entry.cursor.epoch, sequence: 0 },
   new Set(['document:42']),
 );
 if (recovery.kind === 'snapshot-required') {
@@ -77,22 +84,23 @@ if (recovery.kind === 'snapshot-required') {
 
 ```rust
 use std::collections::HashSet;
-use realtime_core::{DeliveryCursor, DeliveryLog};
+use realtime_core::{DeliveryCursor, SubscriptionHub};
 
-let mut log = DeliveryLog::new("server-start-2026-08-26", 256)?;
-log.append("document:42", 8, 8_u64)?;
+let mut hub = SubscriptionHub::new("server-start-2026-08-26", 256)?;
+hub.subscribe("document:42", "browser:1");
+hub.plan_delivery("document:42", 8, 8_u64)?;
 let streams = HashSet::from(["document:42"]);
 let cursor = DeliveryCursor::new("server-start-2026-08-26", 0)?;
-let recovery = log.recover_after(&cursor, Some(&streams));
+let recovery = hub.recover_after(&cursor, Some(&streams));
 # Ok::<(), realtime_core::RealtimeError>(())
 ```
 
 ## Integration philosophy
 
 Keep transports and infrastructure outside the core. A server adapter authenticates a connection,
-maps application events to `append`, filters replay requests through authorization, and sends the
-returned entries. Browser clients may use the backoff helper and typed envelopes without depending
-on server infrastructure.
+passes only authorized streams into recovery, serializes delivery plans, and reports heartbeat
+acknowledgements. A client adapter owns its socket and timers while delegating recovery and retry
+transitions to the core.
 
 ## Development
 

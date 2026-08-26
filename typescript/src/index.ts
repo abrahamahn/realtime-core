@@ -12,6 +12,34 @@ export {
 } from './recovery.js';
 export { SubscriptionRegistry, type SubscriptionStats } from './subscriptions.js';
 export { reconnectDelayMs, type ReconnectBackoffPolicy } from './backoff.js';
+export {
+  SubscriptionHub,
+  latestDeliveryPerStream,
+  type DeliveryPlan,
+  type SubscriptionHubOptions,
+} from './hub.js';
+export {
+  createClientRecoveryState,
+  reduceClientRecovery,
+  type ClientInvalidation,
+  type ClientRecoveryDecision,
+  type ClientRecoveryEntry,
+  type ClientRecoveryEvent,
+  type ClientRecoveryState,
+} from './client-recovery.js';
+export {
+  createReconnectState,
+  ensureMinimumReconnectAttempt,
+  markReconnectConnecting,
+  markReconnectOpen,
+  markReconnectStable,
+  resetReconnectState,
+  scheduleReconnectAttempt,
+  type ReconnectSchedule,
+  type ReconnectState,
+  type ReconnectStatus,
+} from './reconnect.js';
+export { LivenessTracker, type LivenessSweep } from './liveness.js';
 export type {
   CommandEnvelope,
   CommandReceipt,
