@@ -19,10 +19,12 @@ const hub = new SubscriptionHub<string, { readonly id: string }, { readonly revi
 const connection = { id: 'connection-1' };
 hub.subscribe('document:42', connection);
 const plan = hub.planDelivery('document:42', 7, { revision: 7 });
+const recovery = hub.recoverAfter(plan.entry.cursor, new Set(['document:42']));
 const decision = reduceClientRecovery(
   { cursor: null },
   { kind: 'update', stream: plan.entry.stream, cursor: plan.entry.cursor },
 );
+void recovery;
 ```
 
 Applications provide transport adapters, authorization, snapshots, epoch generation, durable
@@ -35,6 +37,8 @@ server may restore its cursor through the `DeliveryLog` constructor's `initialSe
 - An epoch and sequence travel together as one `DeliveryCursor`.
 - A replay is returned only when the requested cursor is fully represented by retained history.
 - An evicted, future, or foreign-epoch cursor requires an authoritative snapshot.
+- Hub recovery always receives an explicit authorization set; an empty set replays nothing.
+- Invalidation collapse rejects entries from different epochs instead of comparing their sequences.
 - Subscription indexes remain consistent in both stream-to-connection directions.
 - Backoff is deterministic, bounded, and free of clock or random dependencies.
 - Transport-open does not reset retry state until the application marks it stable.

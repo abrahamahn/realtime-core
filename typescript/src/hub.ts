@@ -58,7 +58,7 @@ export class SubscriptionHub<Stream, Connection extends object, Payload> {
 
   recoverAfter(
     cursor: DeliveryCursor,
-    authorizedStreams?: ReadonlySet<Stream>,
+    authorizedStreams: ReadonlySet<Stream>,
   ): DeliveryRecovery<Stream, Payload> {
     return this.#deliveries.recoverAfter(cursor, authorizedStreams);
   }
@@ -102,7 +102,12 @@ export function latestDeliveryPerStream<Stream, Payload>(
   entries: readonly DeliveryEntry<Stream, Payload>[],
 ): readonly DeliveryEntry<Stream, Payload>[] {
   const latest = new Map<Stream, DeliveryEntry<Stream, Payload>>();
+  let epoch: string | undefined;
   for (const entry of entries) {
+    epoch ??= entry.cursor.epoch;
+    if (entry.cursor.epoch !== epoch) {
+      throw new RangeError('deliveries from different epochs cannot be collapsed together');
+    }
     const existing = latest.get(entry.stream);
     if (existing === undefined || entry.cursor.sequence > existing.cursor.sequence) {
       latest.set(entry.stream, entry);

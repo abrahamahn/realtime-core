@@ -87,9 +87,10 @@ where
     pub fn recover_after(
         &self,
         cursor: &DeliveryCursor,
-        authorized_streams: Option<&HashSet<Stream>>,
+        authorized_streams: &HashSet<Stream>,
     ) -> DeliveryRecovery<Stream, Payload> {
-        self.deliveries.recover_after(cursor, authorized_streams)
+        self.deliveries
+            .recover_after(cursor, Some(authorized_streams))
     }
 
     #[must_use]
@@ -134,15 +135,26 @@ where
 /// Keeps only the newest delivery for each stream, ordered by final delivery sequence.
 ///
 /// This is opt-in because non-idempotent delta payloads must replay every entry.
-#[must_use]
+/// # Errors
+///
+/// Returns [`RealtimeError::MixedDeliveryEpoch`] rather than comparing sequence numbers from
+/// unrelated delivery-log lifetimes.
 pub fn latest_delivery_per_stream<Stream, Payload>(
     entries: impl IntoIterator<Item = DeliveryEntry<Stream, Payload>>,
-) -> Vec<DeliveryEntry<Stream, Payload>>
+) -> Result<Vec<DeliveryEntry<Stream, Payload>>, RealtimeError>
 where
     Stream: Clone + Ord,
 {
     let mut latest = BTreeMap::<Stream, DeliveryEntry<Stream, Payload>>::new();
+    let mut epoch = None::<String>;
     for entry in entries {
+        match &epoch {
+            None => epoch = Some(entry.cursor.epoch.clone()),
+            Some(epoch) if epoch != &entry.cursor.epoch => {
+                return Err(RealtimeError::MixedDeliveryEpoch);
+            }
+            Some(_) => {}
+        }
         let should_replace = latest
             .get(&entry.stream)
             .is_none_or(|existing| entry.cursor.sequence > existing.cursor.sequence);
@@ -152,5 +164,5 @@ where
     }
     let mut entries = latest.into_values().collect::<Vec<_>>();
     entries.sort_by_key(|entry| entry.cursor.sequence);
-    entries
+    Ok(entries)
 }

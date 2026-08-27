@@ -203,7 +203,7 @@ fn subscription_hub_plans_delivery_recovery_and_disconnects_without_io() {
     hub.plan_delivery("room:2", 1, "second").unwrap();
     let authorized = HashSet::from(["room:2"]);
     assert!(matches!(
-        hub.recover_after(&cursor("epoch-a", 0), Some(&authorized)),
+        hub.recover_after(&cursor("epoch-a", 0), &authorized),
         DeliveryRecovery::Replay { entries, .. }
             if entries.len() == 1 && entries[0].stream == "room:2"
     ));
@@ -218,13 +218,35 @@ fn invalidation_replay_collapse_is_explicit_and_ordered_by_final_delivery() {
         log.append("b", 1, ()).unwrap(),
         log.append("a", 2, ()).unwrap(),
     ];
-    let latest = latest_delivery_per_stream(entries);
+    let latest = latest_delivery_per_stream(entries).unwrap();
     assert_eq!(
         latest
             .iter()
             .map(|entry| (entry.stream, entry.stream_version, entry.cursor.sequence))
             .collect::<Vec<_>>(),
         vec![("b", 1, 2), ("a", 2, 3)]
+    );
+}
+
+#[test]
+fn invalidation_replay_rejects_mixed_epochs() {
+    let entries = vec![
+        realtime_core::DeliveryEntry {
+            cursor: cursor("epoch-a", 9),
+            stream: "room",
+            stream_version: 1,
+            payload: (),
+        },
+        realtime_core::DeliveryEntry {
+            cursor: cursor("epoch-b", 1),
+            stream: "room",
+            stream_version: 2,
+            payload: (),
+        },
+    ];
+    assert_eq!(
+        latest_delivery_per_stream(entries),
+        Err(RealtimeError::MixedDeliveryEpoch)
     );
 }
 

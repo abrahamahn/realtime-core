@@ -39,6 +39,16 @@ describe('SubscriptionHub', () => {
     });
   });
 
+  it('requires an explicit authorization set, including for public streams', () => {
+    const hub = new SubscriptionHub<string, object, string>({ epoch: 'epoch-a' });
+    hub.planDelivery('public', 1, 'one');
+
+    expect(hub.recoverAfter({ epoch: 'epoch-a', sequence: 0 }, new Set())).toMatchObject({
+      kind: 'replay',
+      entries: [],
+    });
+  });
+
   it('removes every subscription for a disconnected connection', () => {
     const hub = new SubscriptionHub<string, object, null>({ epoch: 'epoch-a' });
     const connection = {};
@@ -66,5 +76,24 @@ describe('latestDeliveryPerStream', () => {
       ['b', 1, 2],
       ['a', 2, 3],
     ]);
+  });
+
+  it('rejects mixed epochs instead of comparing unrelated numeric sequences', () => {
+    expect(() =>
+      latestDeliveryPerStream([
+        {
+          cursor: { epoch: 'epoch-a', sequence: 9 },
+          stream: 'room',
+          streamVersion: 1,
+          payload: null,
+        },
+        {
+          cursor: { epoch: 'epoch-b', sequence: 1 },
+          stream: 'room',
+          streamVersion: 2,
+          payload: null,
+        },
+      ]),
+    ).toThrow(/different epochs/u);
   });
 });

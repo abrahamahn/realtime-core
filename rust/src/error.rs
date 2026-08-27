@@ -5,6 +5,7 @@ pub enum RealtimeError {
     InvalidEpoch,
     InvalidCapacity,
     InvalidBackoffPolicy,
+    MixedDeliveryEpoch,
     ReconnectAttemptExhausted,
     SequenceExhausted,
 }
@@ -15,6 +16,9 @@ impl fmt::Display for RealtimeError {
             Self::InvalidEpoch => "delivery log epoch must be non-empty",
             Self::InvalidCapacity => "delivery log capacity must be positive",
             Self::InvalidBackoffPolicy => "reconnect maximum delay must be at least its base delay",
+            Self::MixedDeliveryEpoch => {
+                "deliveries from different epochs cannot be collapsed together"
+            }
             Self::ReconnectAttemptExhausted => "reconnect attempt is exhausted",
             Self::SequenceExhausted => "delivery sequence is exhausted",
         })

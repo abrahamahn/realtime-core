@@ -5,13 +5,15 @@ dependency-free primitives for ordered delivery, subscription hubs, bounded clie
 reconnect state, heartbeat liveness, and application-defined realtime envelopes.
 
 ```rust
+use std::collections::HashSet;
 use realtime_core::{DeliveryCursor, DeliveryRecovery, SubscriptionHub};
 
 let mut hub = SubscriptionHub::new("server-start-2026-08-26", 128)?;
 hub.subscribe("document:42", "browser:1");
 hub.plan_delivery("document:42", 3, "changed")?;
 let cursor = DeliveryCursor::new("server-start-2026-08-26", 0)?;
-match hub.recover_after(&cursor, None) {
+let authorized = HashSet::from(["document:42"]);
+match hub.recover_after(&cursor, &authorized) {
     DeliveryRecovery::Replay { entries, .. } => assert_eq!(entries.len(), 1),
     DeliveryRecovery::SnapshotRequired { .. } => unreachable!(),
 }

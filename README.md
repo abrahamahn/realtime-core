@@ -91,7 +91,7 @@ hub.subscribe("document:42", "browser:1");
 hub.plan_delivery("document:42", 8, 8_u64)?;
 let streams = HashSet::from(["document:42"]);
 let cursor = DeliveryCursor::new("server-start-2026-08-26", 0)?;
-let recovery = hub.recover_after(&cursor, Some(&streams));
+let recovery = hub.recover_after(&cursor, &streams);
 # Ok::<(), realtime_core::RealtimeError>(())
 ```
 
@@ -101,6 +101,10 @@ Keep transports and infrastructure outside the core. A server adapter authentica
 passes only authorized streams into recovery, serializes delivery plans, and reports heartbeat
 acknowledgements. A client adapter owns its socket and timers while delegating recovery and retry
 transitions to the core.
+
+`SubscriptionHub` deliberately requires an explicit authorization set for every recovery. An empty
+set replays nothing. The lower-level `DeliveryLog` can still be used for application-private,
+unfiltered log operations where authorization is not part of the abstraction.
 
 ## Development
 
