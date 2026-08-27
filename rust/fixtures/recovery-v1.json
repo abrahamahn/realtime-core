@@ -1,0 +1,105 @@
+{
+  "profile": "realtime-core-recovery-v1",
+  "cases": [
+    {
+      "name": "authorized-filtered-replay",
+      "epoch": "epoch-a",
+      "maxEntries": 2,
+      "initialSequence": 10,
+      "entries": [
+        { "stream": "a", "streamVersion": 1, "payload": "a1" },
+        { "stream": "b", "streamVersion": 1, "payload": "b1" },
+        { "stream": "a", "streamVersion": 2, "payload": "a2" }
+      ],
+      "after": { "epoch": "epoch-a", "sequence": 11 },
+      "authorizedStreams": ["a"],
+      "expected": {
+        "kind": "replay",
+        "latestCursor": { "epoch": "epoch-a", "sequence": 13 },
+        "entries": [
+          {
+            "cursor": { "epoch": "epoch-a", "sequence": 13 },
+            "stream": "a",
+            "streamVersion": 2,
+            "payload": "a2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty-authorization-replays-nothing",
+      "epoch": "epoch-a",
+      "maxEntries": 2,
+      "initialSequence": 10,
+      "entries": [
+        { "stream": "a", "streamVersion": 1, "payload": "a1" },
+        { "stream": "b", "streamVersion": 1, "payload": "b1" },
+        { "stream": "a", "streamVersion": 2, "payload": "a2" }
+      ],
+      "after": { "epoch": "epoch-a", "sequence": 11 },
+      "authorizedStreams": [],
+      "expected": {
+        "kind": "replay",
+        "latestCursor": { "epoch": "epoch-a", "sequence": 13 },
+        "entries": []
+      }
+    },
+    {
+      "name": "foreign-epoch-requires-snapshot",
+      "epoch": "epoch-a",
+      "maxEntries": 2,
+      "initialSequence": 10,
+      "entries": [
+        { "stream": "a", "streamVersion": 1, "payload": "a1" },
+        { "stream": "b", "streamVersion": 1, "payload": "b1" },
+        { "stream": "a", "streamVersion": 2, "payload": "a2" }
+      ],
+      "after": { "epoch": "epoch-old", "sequence": 13 },
+      "authorizedStreams": ["a", "b"],
+      "expected": {
+        "kind": "snapshot-required",
+        "reason": "epoch-mismatch",
+        "latestCursor": { "epoch": "epoch-a", "sequence": 13 },
+        "earliestAvailableSequence": 12
+      }
+    },
+    {
+      "name": "evicted-cursor-requires-snapshot",
+      "epoch": "epoch-a",
+      "maxEntries": 2,
+      "initialSequence": 10,
+      "entries": [
+        { "stream": "a", "streamVersion": 1, "payload": "a1" },
+        { "stream": "b", "streamVersion": 1, "payload": "b1" },
+        { "stream": "a", "streamVersion": 2, "payload": "a2" }
+      ],
+      "after": { "epoch": "epoch-a", "sequence": 10 },
+      "authorizedStreams": ["a", "b"],
+      "expected": {
+        "kind": "snapshot-required",
+        "reason": "history-gap",
+        "latestCursor": { "epoch": "epoch-a", "sequence": 13 },
+        "earliestAvailableSequence": 12
+      }
+    },
+    {
+      "name": "future-cursor-requires-snapshot",
+      "epoch": "epoch-a",
+      "maxEntries": 2,
+      "initialSequence": 10,
+      "entries": [
+        { "stream": "a", "streamVersion": 1, "payload": "a1" },
+        { "stream": "b", "streamVersion": 1, "payload": "b1" },
+        { "stream": "a", "streamVersion": 2, "payload": "a2" }
+      ],
+      "after": { "epoch": "epoch-a", "sequence": 99 },
+      "authorizedStreams": ["a", "b"],
+      "expected": {
+        "kind": "snapshot-required",
+        "reason": "future-cursor",
+        "latestCursor": { "epoch": "epoch-a", "sequence": 13 },
+        "earliestAvailableSequence": 12
+      }
+    }
+  ]
+}

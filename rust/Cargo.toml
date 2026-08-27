@@ -1,6 +1,6 @@
 [package]
 name = "realtime-core"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Abraham Joongwhan Ahn"]
@@ -15,6 +15,10 @@ exclude = ["target/"]
 
 [lib]
 path = "src/lib.rs"
+
+[dev-dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
 
 [lints.rust]
 unsafe_code = "forbid"

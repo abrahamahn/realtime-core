@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1
+
+- Require explicit authorized streams when recovering through the subscription hub.
+- Reject replay compaction across mixed delivery epochs.
+- Execute authorization, eviction, epoch, and future-cursor recovery vectors in TypeScript and
+  Rust, and verify both published artifacts in CI.
+
 ## 0.3.0
 
 - Add a transport-neutral `SubscriptionHub` that composes subscription indexes with ordered
