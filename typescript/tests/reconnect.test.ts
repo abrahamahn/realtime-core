@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createReconnectState,
   ensureMinimumReconnectAttempt,
+  MAX_RECONNECT_ATTEMPT,
   markReconnectConnecting,
   markReconnectOpen,
   markReconnectStable,
@@ -44,7 +45,7 @@ describe("reconnect state", () => {
   it("fails before overflowing its attempt counter", () => {
     const exhausted = ensureMinimumReconnectAttempt(
       createReconnectState(),
-      Number.MAX_SAFE_INTEGER,
+      MAX_RECONNECT_ATTEMPT,
     );
     expect(() =>
       scheduleReconnectAttempt(exhausted, { baseMs: 1, maxMs: 2 }),

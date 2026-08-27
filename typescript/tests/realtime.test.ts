@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   DeliveryLog,
   MAX_DELIVERY_SEQUENCE,
+  MAX_RECONNECT_ATTEMPT,
   SubscriptionRegistry,
   advanceDeliveryCursor,
   isDeliveryCursor,
@@ -190,6 +191,17 @@ describe("DeliveryLog", () => {
       latestCursor: { epoch: "epoch-a", sequence: MAX_DELIVERY_SEQUENCE },
       entries: [],
     });
+    expect(
+      log.recoverAfter({ epoch: "other", sequence: MAX_DELIVERY_SEQUENCE }),
+    ).toEqual({
+      kind: "snapshot-required",
+      reason: "epoch-mismatch",
+      latestCursor: {
+        epoch: "epoch-a",
+        sequence: MAX_DELIVERY_SEQUENCE,
+      },
+      earliestAvailableSequence: MAX_DELIVERY_SEQUENCE,
+    });
   });
 
   it("validates epoch, capacity, initial sequence, stream version, and cursors", () => {
@@ -200,8 +212,25 @@ describe("DeliveryLog", () => {
     expect(
       () => new DeliveryLog({ epoch: "epoch-a", initialSequence: -1 }),
     ).toThrow(/initialSequence/u);
+    expect(
+      () =>
+        new DeliveryLog({
+          epoch: "epoch-a",
+          initialSequence: MAX_DELIVERY_SEQUENCE + 1,
+        }),
+    ).toThrow(/initialSequence/u);
+    expect(
+      () =>
+        new DeliveryLog({
+          epoch: "epoch-a",
+          maxEntries: MAX_DELIVERY_SEQUENCE + 1,
+        }),
+    ).toThrow(/maxEntries/u);
     const log = new DeliveryLog<string, string>({ epoch: "epoch-a" });
     expect(() => log.append("a", -1, "payload")).toThrow(/streamVersion/u);
+    expect(() =>
+      log.append("a", MAX_DELIVERY_SEQUENCE + 1, "payload"),
+    ).toThrow(/streamVersion/u);
     expect(() => log.recoverAfter({ epoch: "", sequence: -1 })).toThrow(
       /after/u,
     );
@@ -252,6 +281,12 @@ describe("delivery cursor transitions", () => {
     expect(isDeliveryCursor({ epoch: "", sequence: 0 })).toBe(false);
     expect(isDeliveryCursor({ epoch: "epoch-a", sequence: -1 })).toBe(false);
     expect(isDeliveryCursor({ epoch: "epoch-a", sequence: 0.5 })).toBe(false);
+    expect(
+      isDeliveryCursor({
+        epoch: "epoch-a",
+        sequence: MAX_DELIVERY_SEQUENCE + 1,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -260,12 +295,15 @@ describe("reconnectDelayMs", () => {
     expect(reconnectDelayMs(0, { baseMs: 1_000, maxMs: 15_000 })).toBe(1_000);
     expect(reconnectDelayMs(10, { baseMs: 1_000, maxMs: 15_000 })).toBe(15_000);
     expect(
-      reconnectDelayMs(Number.MAX_SAFE_INTEGER, {
+      reconnectDelayMs(MAX_RECONNECT_ATTEMPT, {
         baseMs: 1_000,
         maxMs: 15_000,
       }),
     ).toBe(15_000);
     expect(reconnectDelayMs(5, { baseMs: 0, maxMs: 0 })).toBe(0);
+    expect(
+      reconnectDelayMs(MAX_RECONNECT_ATTEMPT, { baseMs: 0, maxMs: 0 }),
+    ).toBe(0);
   });
 
   it("rejects fractional, negative, and inverted backoff inputs", () => {
@@ -278,6 +316,12 @@ describe("reconnectDelayMs", () => {
     expect(() => reconnectDelayMs(1, { baseMs: 3, maxMs: 2 })).toThrow(
       /maxMs/u,
     );
+    expect(() =>
+      reconnectDelayMs(MAX_RECONNECT_ATTEMPT + 1, {
+        baseMs: 1,
+        maxMs: 2,
+      }),
+    ).toThrow(/attempt/u);
   });
 });
 

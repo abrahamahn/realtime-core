@@ -23,6 +23,10 @@ match hub.recover_after(&cursor, &authorized) {
 Transport, authorization, persistence, clocks, epoch generation, serialization, and application
 stream semantics are owned by the consuming server.
 
+Delivery sequences, stream versions, capacities, and reconnect delays are capped at JavaScript's
+exact-integer boundary so Rust-produced state remains lossless for TypeScript consumers. Reconnect
+attempts use the same unsigned 32-bit range in both implementations.
+
 ```bash
 cargo build --all-targets --locked
 cargo check --all-targets --locked

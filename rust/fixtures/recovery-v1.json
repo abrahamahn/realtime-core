@@ -100,6 +100,29 @@
         "latestCursor": { "epoch": "epoch-a", "sequence": 13 },
         "earliestAvailableSequence": 12
       }
+    },
+    {
+      "name": "interoperable-safe-integer-boundary",
+      "epoch": "epoch-max",
+      "maxEntries": 1,
+      "initialSequence": 9007199254740990,
+      "entries": [
+        { "stream": "boundary", "streamVersion": 9007199254740991, "payload": "final" }
+      ],
+      "after": { "epoch": "epoch-max", "sequence": 9007199254740990 },
+      "authorizedStreams": ["boundary"],
+      "expected": {
+        "kind": "replay",
+        "latestCursor": { "epoch": "epoch-max", "sequence": 9007199254740991 },
+        "entries": [
+          {
+            "cursor": { "epoch": "epoch-max", "sequence": 9007199254740991 },
+            "stream": "boundary",
+            "streamVersion": 9007199254740991,
+            "payload": "final"
+          }
+        ]
+      }
     }
   ]
 }

@@ -3,9 +3,9 @@ use std::collections::HashSet;
 use realtime_core::{
     ClientInvalidation, ClientRecoveryEntry, ClientRecoveryEvent, ClientRecoveryState,
     CommandEnvelope, CommandReceipt, DeliveryCursor, DeliveryCursorTransition, DeliveryLog,
-    DeliveryRecovery, LivenessTracker, MAX_DELIVERY_SEQUENCE, RealtimeError,
-    ReconnectBackoffPolicy, ReconnectState, ReconnectStatus, SnapshotRequiredReason,
-    SubscriptionHub, SubscriptionRegistry, advance_delivery_cursor,
+    DeliveryRecovery, LivenessTracker, MAX_DELIVERY_SEQUENCE, MAX_INTEROPERABLE_INTEGER,
+    MAX_RECONNECT_ATTEMPT, RealtimeError, ReconnectBackoffPolicy, ReconnectState, ReconnectStatus,
+    SnapshotRequiredReason, SubscriptionHub, SubscriptionRegistry, advance_delivery_cursor,
     ensure_minimum_reconnect_attempt, latest_delivery_per_stream, mark_reconnect_connecting,
     mark_reconnect_open, mark_reconnect_stable, reconnect_delay_ms, reduce_client_recovery,
     schedule_reconnect_attempt,
@@ -137,6 +137,33 @@ fn epoch_and_sequence_exhaustion_fail_before_mutation() {
         DeliveryCursor::new(" ", 0),
         Err(RealtimeError::InvalidEpoch)
     );
+    assert_eq!(
+        DeliveryCursor::new("epoch-a", MAX_INTEROPERABLE_INTEGER + 1),
+        Err(RealtimeError::InvalidSequence)
+    );
+    assert_eq!(
+        DeliveryLog::<&str, &str>::with_initial_sequence(
+            "epoch-a",
+            2,
+            MAX_INTEROPERABLE_INTEGER + 1,
+        )
+        .unwrap_err(),
+        RealtimeError::InvalidSequence
+    );
+    assert_eq!(
+        DeliveryLog::<&str, &str>::new(
+            "epoch-a",
+            usize::try_from(MAX_INTEROPERABLE_INTEGER + 1).unwrap(),
+        )
+        .unwrap_err(),
+        RealtimeError::InvalidCapacity
+    );
+    let mut invalid_version = DeliveryLog::new("epoch-a", 2).unwrap();
+    assert_eq!(
+        invalid_version.append("stream", MAX_INTEROPERABLE_INTEGER + 1, "payload"),
+        Err(RealtimeError::InvalidStreamVersion)
+    );
+    assert!(invalid_version.is_empty());
     let mut log = DeliveryLog::with_initial_sequence("epoch-a", 2, MAX_DELIVERY_SEQUENCE).unwrap();
     assert_eq!(
         log.append("stream", 1, "payload"),
@@ -146,6 +173,14 @@ fn epoch_and_sequence_exhaustion_fail_before_mutation() {
     assert_eq!(
         log.latest_cursor(),
         cursor("epoch-a", MAX_DELIVERY_SEQUENCE)
+    );
+    assert_eq!(
+        log.recover_after(&cursor("other", MAX_DELIVERY_SEQUENCE), None),
+        DeliveryRecovery::SnapshotRequired {
+            reason: SnapshotRequiredReason::EpochMismatch,
+            latest_cursor: cursor("epoch-a", MAX_DELIVERY_SEQUENCE),
+            earliest_available_sequence: MAX_DELIVERY_SEQUENCE,
+        }
     );
 }
 
@@ -160,11 +195,32 @@ fn reconnect_backoff_is_deterministic_capped_and_checked() {
     assert_eq!(reconnect_delay_ms(u32::MAX, policy).unwrap(), 15_000);
     assert_eq!(
         reconnect_delay_ms(
+            MAX_RECONNECT_ATTEMPT,
+            ReconnectBackoffPolicy {
+                base_ms: 0,
+                max_ms: 0,
+            },
+        )
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        reconnect_delay_ms(
             1,
             ReconnectBackoffPolicy {
                 base_ms: 2,
                 max_ms: 1,
             }
+        ),
+        Err(RealtimeError::InvalidBackoffPolicy)
+    );
+    assert_eq!(
+        reconnect_delay_ms(
+            0,
+            ReconnectBackoffPolicy {
+                base_ms: MAX_INTEROPERABLE_INTEGER + 1,
+                max_ms: MAX_INTEROPERABLE_INTEGER + 1,
+            },
         ),
         Err(RealtimeError::InvalidBackoffPolicy)
     );
@@ -351,7 +407,7 @@ fn reconnect_state_resets_only_after_stability_and_never_wraps() {
     assert_eq!(
         schedule_reconnect_attempt(
             ReconnectState {
-                attempt: u32::MAX,
+                attempt: MAX_RECONNECT_ATTEMPT,
                 status: ReconnectStatus::Waiting,
             },
             policy,

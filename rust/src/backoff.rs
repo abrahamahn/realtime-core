@@ -1,4 +1,4 @@
-use crate::RealtimeError;
+use crate::{MAX_INTEROPERABLE_INTEGER, RealtimeError};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ReconnectBackoffPolicy {
@@ -10,12 +10,16 @@ pub struct ReconnectBackoffPolicy {
 ///
 /// # Errors
 ///
-/// Returns [`RealtimeError::InvalidBackoffPolicy`] when `max_ms` is below `base_ms`.
+/// Returns [`RealtimeError::InvalidBackoffPolicy`] when `max_ms` is below `base_ms` or either
+/// delay exceeds the exact cross-language integer range.
 pub fn reconnect_delay_ms(
     attempt: u32,
     policy: ReconnectBackoffPolicy,
 ) -> Result<u64, RealtimeError> {
-    if policy.max_ms < policy.base_ms {
+    if policy.max_ms < policy.base_ms
+        || policy.base_ms > MAX_INTEROPERABLE_INTEGER
+        || policy.max_ms > MAX_INTEROPERABLE_INTEGER
+    {
         return Err(RealtimeError::InvalidBackoffPolicy);
     }
     if policy.base_ms == 0 || attempt >= u64::BITS {

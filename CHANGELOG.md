@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.2
+
+- Keep delivery sequences, stream versions, capacities, and reconnect delays within the exact
+  cross-language integer range, rejecting larger Rust inputs before mutation.
+- Align reconnect attempts to an unsigned 32-bit counter in TypeScript and Rust.
+- Preserve zero-delay TypeScript backoff at every attempt instead of producing `NaN` after numeric
+  exponent overflow.
+- Execute the exact-integer recovery boundary through the shared TypeScript/Rust conformance corpus.
+
 ## 0.3.1
 
 - Require explicit authorized streams when recovering through the subscription hub.

@@ -8,6 +8,7 @@ mod client_recovery;
 mod envelopes;
 mod error;
 mod hub;
+mod limits;
 mod liveness;
 mod reconnect;
 mod recovery;
@@ -21,6 +22,7 @@ pub use client_recovery::{
 pub use envelopes::{CommandEnvelope, CommandReceipt, DeltaEnvelope, SnapshotEnvelope};
 pub use error::RealtimeError;
 pub use hub::{DeliveryPlan, SubscriptionHub, latest_delivery_per_stream};
+pub use limits::{MAX_INTEROPERABLE_INTEGER, MAX_RECONNECT_ATTEMPT};
 pub use liveness::{LivenessSweep, LivenessTracker};
 pub use reconnect::{
     ReconnectSchedule, ReconnectState, ReconnectStatus, ensure_minimum_reconnect_attempt,

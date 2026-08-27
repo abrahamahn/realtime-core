@@ -1,9 +1,9 @@
 use std::collections::{HashSet, VecDeque};
 use std::hash::Hash;
 
-use crate::RealtimeError;
+use crate::{MAX_INTEROPERABLE_INTEGER, RealtimeError};
 
-pub const MAX_DELIVERY_SEQUENCE: u64 = u64::MAX;
+pub const MAX_DELIVERY_SEQUENCE: u64 = MAX_INTEROPERABLE_INTEGER;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DeliveryCursor {
@@ -16,9 +16,11 @@ impl DeliveryCursor {
     ///
     /// # Errors
     ///
-    /// Returns [`RealtimeError::InvalidEpoch`] when `epoch` is empty or only whitespace.
+    /// Returns [`RealtimeError::InvalidEpoch`] when `epoch` is empty or only whitespace and
+    /// [`RealtimeError::InvalidSequence`] when `sequence` exceeds the exact cross-language range.
     pub fn new(epoch: impl Into<String>, sequence: u64) -> Result<Self, RealtimeError> {
         let epoch = validate_epoch(epoch)?;
+        validate_sequence(sequence)?;
         Ok(Self { epoch, sequence })
     }
 }
@@ -75,6 +77,13 @@ fn validate_epoch(epoch: impl Into<String>) -> Result<String, RealtimeError> {
     Ok(epoch)
 }
 
+fn validate_sequence(sequence: u64) -> Result<(), RealtimeError> {
+    if sequence > MAX_DELIVERY_SEQUENCE {
+        return Err(RealtimeError::InvalidSequence);
+    }
+    Ok(())
+}
+
 /// Advances a consumer cursor and reports epoch changes explicitly.
 #[must_use]
 pub fn advance_delivery_cursor(
@@ -101,7 +110,8 @@ impl<Stream, Payload> DeliveryLog<Stream, Payload> {
     /// # Errors
     ///
     /// Returns [`RealtimeError::InvalidEpoch`] when `epoch` is empty and
-    /// [`RealtimeError::InvalidCapacity`] when `max_entries` is zero.
+    /// [`RealtimeError::InvalidCapacity`] when `max_entries` is zero or exceeds the exact
+    /// cross-language integer range.
     pub fn new(epoch: impl Into<String>, max_entries: usize) -> Result<Self, RealtimeError> {
         Self::with_initial_sequence(epoch, max_entries, 0)
     }
@@ -112,21 +122,24 @@ impl<Stream, Payload> DeliveryLog<Stream, Payload> {
     ///
     /// # Errors
     ///
-    /// Returns [`RealtimeError::InvalidEpoch`] when `epoch` is empty and
-    /// [`RealtimeError::InvalidCapacity`] when `max_entries` is zero.
+    /// Returns [`RealtimeError::InvalidEpoch`] when `epoch` is empty,
+    /// [`RealtimeError::InvalidCapacity`] when `max_entries` is zero or too large, and
+    /// [`RealtimeError::InvalidSequence`] when `initial_sequence` exceeds the exact
+    /// cross-language integer range.
     pub fn with_initial_sequence(
         epoch: impl Into<String>,
         max_entries: usize,
         initial_sequence: u64,
     ) -> Result<Self, RealtimeError> {
         let epoch = validate_epoch(epoch)?;
-        if max_entries == 0 {
+        validate_sequence(initial_sequence)?;
+        if max_entries == 0 || (max_entries as u128) > u128::from(MAX_INTEROPERABLE_INTEGER) {
             return Err(RealtimeError::InvalidCapacity);
         }
         Ok(Self {
             epoch,
             max_entries,
-            entries: VecDeque::with_capacity(max_entries),
+            entries: VecDeque::new(),
             latest_sequence: initial_sequence,
         })
     }
@@ -135,7 +148,9 @@ impl<Stream, Payload> DeliveryLog<Stream, Payload> {
     ///
     /// # Errors
     ///
-    /// Returns [`RealtimeError::SequenceExhausted`] before mutation when the sequence is exhausted.
+    /// Returns [`RealtimeError::SequenceExhausted`] before mutation when the sequence is exhausted
+    /// and [`RealtimeError::InvalidStreamVersion`] when `stream_version` exceeds the exact
+    /// cross-language integer range.
     pub fn append(
         &mut self,
         stream: Stream,
@@ -146,10 +161,16 @@ impl<Stream, Payload> DeliveryLog<Stream, Payload> {
         Stream: Clone,
         Payload: Clone,
     {
+        if stream_version > MAX_INTEROPERABLE_INTEGER {
+            return Err(RealtimeError::InvalidStreamVersion);
+        }
         let sequence = self
             .latest_sequence
             .checked_add(1)
             .ok_or(RealtimeError::SequenceExhausted)?;
+        if sequence > MAX_DELIVERY_SEQUENCE {
+            return Err(RealtimeError::SequenceExhausted);
+        }
         let entry = DeliveryEntry {
             cursor: DeliveryCursor {
                 epoch: self.epoch.clone(),
@@ -179,7 +200,11 @@ impl<Stream, Payload> DeliveryLog<Stream, Payload> {
     {
         let latest_cursor = self.latest_cursor();
         let earliest_available_sequence = self.entries.front().map_or_else(
-            || self.latest_sequence.saturating_add(1),
+            || {
+                self.latest_sequence
+                    .saturating_add(1)
+                    .min(MAX_DELIVERY_SEQUENCE)
+            },
             |entry| entry.cursor.sequence,
         );
         if after.epoch != self.epoch {
