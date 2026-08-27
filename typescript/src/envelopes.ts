@@ -1,14 +1,14 @@
-import type { DeliveryCursor } from './recovery.js';
+import type { DeliveryCursor } from "./recovery.js";
 
 export interface SnapshotEnvelope<Stream, Payload> {
-  readonly kind: 'snapshot';
+  readonly kind: "snapshot";
   readonly stream: Stream;
   readonly cursor: DeliveryCursor;
   readonly payload: Payload;
 }
 
 export interface DeltaEnvelope<Stream, Payload> {
-  readonly kind: 'delta';
+  readonly kind: "delta";
   readonly stream: Stream;
   readonly cursor: DeliveryCursor;
   readonly payload: Payload;
@@ -23,11 +23,11 @@ export interface CommandEnvelope<Command, Payload> {
 export type CommandReceipt<Command, Result, Rejection = string> =
   | {
       readonly commandId: Command;
-      readonly status: 'accepted';
+      readonly status: "accepted";
       readonly result: Result;
     }
   | {
       readonly commandId: Command;
-      readonly status: 'rejected';
+      readonly status: "rejected";
       readonly rejection: Rejection;
     };

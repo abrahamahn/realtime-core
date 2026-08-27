@@ -3,8 +3,11 @@ import {
   type DeliveryCursor,
   type DeliveryEntry,
   type DeliveryRecovery,
-} from './recovery.js';
-import { SubscriptionRegistry, type SubscriptionStats } from './subscriptions.js';
+} from "./recovery.js";
+import {
+  SubscriptionRegistry,
+  type SubscriptionStats,
+} from "./subscriptions.js";
 
 export interface SubscriptionHubOptions {
   /** Application-owned identity for this delivery-log lifetime. */
@@ -106,12 +109,19 @@ export function latestDeliveryPerStream<Stream, Payload>(
   for (const entry of entries) {
     epoch ??= entry.cursor.epoch;
     if (entry.cursor.epoch !== epoch) {
-      throw new RangeError('deliveries from different epochs cannot be collapsed together');
+      throw new RangeError(
+        "deliveries from different epochs cannot be collapsed together",
+      );
     }
     const existing = latest.get(entry.stream);
-    if (existing === undefined || entry.cursor.sequence > existing.cursor.sequence) {
+    if (
+      existing === undefined ||
+      entry.cursor.sequence > existing.cursor.sequence
+    ) {
       latest.set(entry.stream, entry);
     }
   }
-  return [...latest.values()].sort((left, right) => left.cursor.sequence - right.cursor.sequence);
+  return [...latest.values()].sort(
+    (left, right) => left.cursor.sequence - right.cursor.sequence,
+  );
 }

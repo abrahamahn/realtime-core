@@ -4,10 +4,10 @@ export interface DeliveryCursor {
 }
 
 export type DeliveryCursorTransition =
-  | { readonly kind: 'initialized'; readonly cursor: DeliveryCursor }
-  | { readonly kind: 'advanced'; readonly cursor: DeliveryCursor }
-  | { readonly kind: 'stale'; readonly cursor: DeliveryCursor }
-  | { readonly kind: 'epoch-changed'; readonly cursor: DeliveryCursor };
+  | { readonly kind: "initialized"; readonly cursor: DeliveryCursor }
+  | { readonly kind: "advanced"; readonly cursor: DeliveryCursor }
+  | { readonly kind: "stale"; readonly cursor: DeliveryCursor }
+  | { readonly kind: "epoch-changed"; readonly cursor: DeliveryCursor };
 
 export interface DeliveryLogOptions {
   /** Application-supplied identity for this delivery-log lifetime. */
@@ -23,16 +23,19 @@ export interface DeliveryEntry<Stream, Payload> {
   readonly payload: Payload;
 }
 
-export type SnapshotRequiredReason = 'epoch-mismatch' | 'history-gap' | 'future-cursor';
+export type SnapshotRequiredReason =
+  | "epoch-mismatch"
+  | "history-gap"
+  | "future-cursor";
 
 export type DeliveryRecovery<Stream, Payload> =
   | {
-      readonly kind: 'replay';
+      readonly kind: "replay";
       readonly latestCursor: DeliveryCursor;
       readonly entries: readonly DeliveryEntry<Stream, Payload>[];
     }
   | {
-      readonly kind: 'snapshot-required';
+      readonly kind: "snapshot-required";
       readonly reason: SnapshotRequiredReason;
       readonly latestCursor: DeliveryCursor;
       readonly earliestAvailableSequence: number;
@@ -51,14 +54,15 @@ function freezeCursor(epoch: string, sequence: number): DeliveryCursor {
 }
 
 export function isDeliveryCursor(value: unknown): value is DeliveryCursor {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    return false;
   const cursor = value as Record<string, unknown>;
   return (
-    typeof cursor['epoch'] === 'string' &&
-    cursor['epoch'].trim().length > 0 &&
-    typeof cursor['sequence'] === 'number' &&
-    Number.isSafeInteger(cursor['sequence']) &&
-    cursor['sequence'] >= 0
+    typeof cursor["epoch"] === "string" &&
+    cursor["epoch"].trim().length > 0 &&
+    typeof cursor["sequence"] === "number" &&
+    Number.isSafeInteger(cursor["sequence"]) &&
+    cursor["sequence"] >= 0
   );
 }
 
@@ -73,21 +77,21 @@ export function advanceDeliveryCursor(
   incoming: DeliveryCursor,
 ): DeliveryCursorTransition {
   if (!isDeliveryCursor(incoming)) {
-    throw new RangeError('incoming must be a valid delivery cursor');
+    throw new RangeError("incoming must be a valid delivery cursor");
   }
   const frozenIncoming = freezeCursor(incoming.epoch, incoming.sequence);
-  if (current == null) return { kind: 'initialized', cursor: frozenIncoming };
+  if (current == null) return { kind: "initialized", cursor: frozenIncoming };
   if (!isDeliveryCursor(current)) {
-    throw new RangeError('current must be a valid delivery cursor');
+    throw new RangeError("current must be a valid delivery cursor");
   }
   if (current.epoch !== incoming.epoch) {
-    return { kind: 'epoch-changed', cursor: frozenIncoming };
+    return { kind: "epoch-changed", cursor: frozenIncoming };
   }
   if (incoming.sequence > current.sequence) {
-    return { kind: 'advanced', cursor: frozenIncoming };
+    return { kind: "advanced", cursor: frozenIncoming };
   }
   return {
-    kind: 'stale',
+    kind: "stale",
     cursor: freezeCursor(current.epoch, current.sequence),
   };
 }
@@ -99,24 +103,31 @@ export class DeliveryLog<Stream, Payload> {
   #latestSequence: number;
 
   constructor(options: DeliveryLogOptions) {
-    if (typeof options.epoch !== 'string' || options.epoch.trim().length === 0) {
-      throw new RangeError('epoch must be a non-empty string');
+    if (
+      typeof options.epoch !== "string" ||
+      options.epoch.trim().length === 0
+    ) {
+      throw new RangeError("epoch must be a non-empty string");
     }
     const maxEntries = options.maxEntries ?? 1_000;
     const initialSequence = options.initialSequence ?? 0;
     if (!Number.isSafeInteger(maxEntries) || maxEntries <= 0) {
-      throw new RangeError('maxEntries must be a positive safe integer');
+      throw new RangeError("maxEntries must be a positive safe integer");
     }
-    validateSequence(initialSequence, 'initialSequence');
+    validateSequence(initialSequence, "initialSequence");
     this.#epoch = options.epoch;
     this.#maxEntries = maxEntries;
     this.#latestSequence = initialSequence;
   }
 
-  append(stream: Stream, streamVersion: number, payload: Payload): DeliveryEntry<Stream, Payload> {
-    validateSequence(streamVersion, 'streamVersion');
+  append(
+    stream: Stream,
+    streamVersion: number,
+    payload: Payload,
+  ): DeliveryEntry<Stream, Payload> {
+    validateSequence(streamVersion, "streamVersion");
     if (this.#latestSequence === MAX_DELIVERY_SEQUENCE) {
-      throw new RangeError('delivery sequence is exhausted');
+      throw new RangeError("delivery sequence is exhausted");
     }
     this.#latestSequence += 1;
     const entry: DeliveryEntry<Stream, Payload> = Object.freeze({
@@ -136,16 +147,17 @@ export class DeliveryLog<Stream, Payload> {
     streams?: ReadonlySet<Stream>,
   ): DeliveryRecovery<Stream, Payload> {
     if (!isDeliveryCursor(after)) {
-      throw new RangeError('after must be a valid delivery cursor');
+      throw new RangeError("after must be a valid delivery cursor");
     }
     const latestCursor = this.latestCursor();
     const firstRetained = this.#entries[0];
     const earliest =
-      firstRetained?.cursor.sequence ?? Math.min(MAX_DELIVERY_SEQUENCE, this.#latestSequence + 1);
+      firstRetained?.cursor.sequence ??
+      Math.min(MAX_DELIVERY_SEQUENCE, this.#latestSequence + 1);
     if (after.epoch !== this.#epoch) {
       return {
-        kind: 'snapshot-required',
-        reason: 'epoch-mismatch',
+        kind: "snapshot-required",
+        reason: "epoch-mismatch",
         latestCursor,
         earliestAvailableSequence: earliest,
       };
@@ -158,8 +170,8 @@ export class DeliveryLog<Stream, Payload> {
         : after.sequence < firstRetained.cursor.sequence - 1);
     if (historyGap || futureCursor) {
       return {
-        kind: 'snapshot-required',
-        reason: futureCursor ? 'future-cursor' : 'history-gap',
+        kind: "snapshot-required",
+        reason: futureCursor ? "future-cursor" : "history-gap",
         latestCursor,
         earliestAvailableSequence: earliest,
       };
@@ -169,7 +181,7 @@ export class DeliveryLog<Stream, Payload> {
         entry.cursor.sequence > after.sequence &&
         (streams === undefined || streams.has(entry.stream)),
     );
-    return { kind: 'replay', latestCursor, entries };
+    return { kind: "replay", latestCursor, entries };
   }
 
   entries(): readonly DeliveryEntry<Stream, Payload>[] {

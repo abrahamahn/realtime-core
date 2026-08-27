@@ -1,8 +1,8 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync } from "node:fs";
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from "vitest";
 
-import { DeliveryLog, type DeliveryRecovery } from '../src/index.js';
+import { DeliveryLog, type DeliveryRecovery } from "../src/index.js";
 
 interface RecoveryCase {
   readonly name: string;
@@ -20,12 +20,15 @@ interface RecoveryCase {
 }
 
 const fixture = JSON.parse(
-  readFileSync(new URL('../../rust/fixtures/recovery-v1.json', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL("../../rust/fixtures/recovery-v1.json", import.meta.url),
+    "utf8",
+  ),
 ) as { readonly profile: string; readonly cases: readonly RecoveryCase[] };
 
-describe('cross-language recovery conformance', () => {
-  it('matches authorization, eviction, epoch, and future-cursor decisions', () => {
-    expect(fixture.profile).toBe('realtime-core-recovery-v1');
+describe("cross-language recovery conformance", () => {
+  it("matches authorization, eviction, epoch, and future-cursor decisions", () => {
+    expect(fixture.profile).toBe("realtime-core-recovery-v1");
     for (const vector of fixture.cases) {
       const log = new DeliveryLog<string, string>({
         epoch: vector.epoch,

@@ -1,4 +1,4 @@
-import { advanceDeliveryCursor, type DeliveryCursor } from './recovery.js';
+import { advanceDeliveryCursor, type DeliveryCursor } from "./recovery.js";
 
 export interface ClientRecoveryState {
   readonly cursor: DeliveryCursor | null;
@@ -11,21 +11,21 @@ export interface ClientRecoveryEntry<Stream> {
 
 export type ClientRecoveryEvent<Stream> =
   | {
-      readonly kind: 'update';
+      readonly kind: "update";
       readonly stream: Stream;
       readonly cursor?: DeliveryCursor;
     }
   | {
-      readonly kind: 'recovery';
+      readonly kind: "recovery";
       readonly entries: readonly ClientRecoveryEntry<Stream>[];
       readonly latestCursor?: DeliveryCursor;
       readonly snapshotRequired?: boolean;
     };
 
 export type ClientInvalidation<Stream> =
-  | { readonly kind: 'none' }
-  | { readonly kind: 'streams'; readonly streams: readonly Stream[] }
-  | { readonly kind: 'all' };
+  | { readonly kind: "none" }
+  | { readonly kind: "streams"; readonly streams: readonly Stream[] }
+  | { readonly kind: "all" };
 
 export interface ClientRecoveryDecision<Stream> {
   readonly state: ClientRecoveryState;
@@ -34,7 +34,9 @@ export interface ClientRecoveryDecision<Stream> {
   readonly requiresSnapshot: boolean;
 }
 
-export function createClientRecoveryState(cursor: DeliveryCursor | null = null): ClientRecoveryState {
+export function createClientRecoveryState(
+  cursor: DeliveryCursor | null = null,
+): ClientRecoveryState {
   if (cursor === null) return Object.freeze({ cursor: null });
   const transition = advanceDeliveryCursor(null, cursor);
   return Object.freeze({ cursor: transition.cursor });
@@ -47,7 +49,7 @@ function acceptCursor(
   const transition = advanceDeliveryCursor(current, incoming);
   return {
     cursor: transition.cursor,
-    epochChanged: transition.kind === 'epoch-changed',
+    epochChanged: transition.kind === "epoch-changed",
   };
 }
 
@@ -56,11 +58,11 @@ export function reduceClientRecovery<Stream>(
   state: ClientRecoveryState,
   event: ClientRecoveryEvent<Stream>,
 ): ClientRecoveryDecision<Stream> {
-  if (event.kind === 'update') {
+  if (event.kind === "update") {
     if (event.cursor === undefined) {
       return {
         state,
-        invalidation: { kind: 'streams', streams: [event.stream] },
+        invalidation: { kind: "streams", streams: [event.stream] },
         requiresSnapshot: false,
       };
     }
@@ -68,8 +70,8 @@ export function reduceClientRecovery<Stream>(
     return {
       state: createClientRecoveryState(accepted.cursor),
       invalidation: accepted.epochChanged
-        ? { kind: 'all' }
-        : { kind: 'streams', streams: [event.stream] },
+        ? { kind: "all" }
+        : { kind: "streams", streams: [event.stream] },
       requiresSnapshot: accepted.epochChanged,
     };
   }
@@ -77,7 +79,7 @@ export function reduceClientRecovery<Stream>(
   if (event.snapshotRequired === true) {
     return {
       state: createClientRecoveryState(event.latestCursor ?? null),
-      invalidation: { kind: 'all' },
+      invalidation: { kind: "all" },
       requiresSnapshot: true,
     };
   }
@@ -102,10 +104,10 @@ export function reduceClientRecovery<Stream>(
   return {
     state: createClientRecoveryState(cursor),
     invalidation: epochChanged
-      ? { kind: 'all' }
+      ? { kind: "all" }
       : streams.size === 0
-        ? { kind: 'none' }
-        : { kind: 'streams', streams: [...streams] },
+        ? { kind: "none" }
+        : { kind: "streams", streams: [...streams] },
     requiresSnapshot: epochChanged,
   };
 }

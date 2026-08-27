@@ -9,15 +9,18 @@ export {
   type DeliveryLogOptions,
   type DeliveryRecovery,
   type SnapshotRequiredReason,
-} from './recovery.js';
-export { SubscriptionRegistry, type SubscriptionStats } from './subscriptions.js';
-export { reconnectDelayMs, type ReconnectBackoffPolicy } from './backoff.js';
+} from "./recovery.js";
+export {
+  SubscriptionRegistry,
+  type SubscriptionStats,
+} from "./subscriptions.js";
+export { reconnectDelayMs, type ReconnectBackoffPolicy } from "./backoff.js";
 export {
   SubscriptionHub,
   latestDeliveryPerStream,
   type DeliveryPlan,
   type SubscriptionHubOptions,
-} from './hub.js';
+} from "./hub.js";
 export {
   createClientRecoveryState,
   reduceClientRecovery,
@@ -26,7 +29,7 @@ export {
   type ClientRecoveryEntry,
   type ClientRecoveryEvent,
   type ClientRecoveryState,
-} from './client-recovery.js';
+} from "./client-recovery.js";
 export {
   createReconnectState,
   ensureMinimumReconnectAttempt,
@@ -38,11 +41,11 @@ export {
   type ReconnectSchedule,
   type ReconnectState,
   type ReconnectStatus,
-} from './reconnect.js';
-export { LivenessTracker, type LivenessSweep } from './liveness.js';
+} from "./reconnect.js";
+export { LivenessTracker, type LivenessSweep } from "./liveness.js";
 export type {
   CommandEnvelope,
   CommandReceipt,
   DeltaEnvelope,
   SnapshotEnvelope,
-} from './envelopes.js';
+} from "./envelopes.js";

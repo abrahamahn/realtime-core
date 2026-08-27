@@ -62,7 +62,8 @@ export class SubscriptionRegistry<Stream, Connection extends object> {
 
   stats(): SubscriptionStats {
     let subscriptions = 0;
-    for (const connections of this.#byStream.values()) subscriptions += connections.size;
+    for (const connections of this.#byStream.values())
+      subscriptions += connections.size;
     return {
       streams: this.#byStream.size,
       subscriptions,
