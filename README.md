@@ -45,6 +45,8 @@ snapshot source.
 ## Important invariants
 
 - Delivery sequences never repeat or wrap within a log epoch.
+- Shared numeric state never exceeds JavaScript's exact-integer boundary; Rust rejects larger
+  delivery sequences, stream versions, capacities, and reconnect delays before mutation.
 - Numeric sequences from different epochs are never treated as comparable.
 - Replay entries are ordered by the global delivery sequence.
 - A gap, future cursor, or different epoch cannot be represented as an empty successful replay.
@@ -55,6 +57,7 @@ snapshot source.
 - Reconnect state does not reset merely because a transport opened.
 - A liveness sweep probes acknowledged connections once before declaring them stale.
 - Reconnect backoff is deterministic and capped.
+- Reconnect attempts use the same unsigned 32-bit range in both implementations.
 - The core performs no I/O and reads no global clock or randomness.
 
 ## TypeScript example

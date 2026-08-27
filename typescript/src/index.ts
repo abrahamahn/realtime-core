@@ -16,6 +16,10 @@ export {
 } from "./subscriptions.js";
 export { reconnectDelayMs, type ReconnectBackoffPolicy } from "./backoff.js";
 export {
+  MAX_INTEROPERABLE_INTEGER,
+  MAX_RECONNECT_ATTEMPT,
+} from "./limits.js";
+export {
   SubscriptionHub,
   latestDeliveryPerStream,
   type DeliveryPlan,

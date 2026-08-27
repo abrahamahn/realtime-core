@@ -34,6 +34,7 @@ server may restore its cursor through the `DeliveryLog` constructor's `initialSe
 ## Invariants
 
 - Delivery sequences are positive, monotonic safe integers and never wrap.
+- Shared numeric state stays within JavaScript's exact-integer range in both implementations.
 - An epoch and sequence travel together as one `DeliveryCursor`.
 - A replay is returned only when the requested cursor is fully represented by retained history.
 - An evicted, future, or foreign-epoch cursor requires an authoritative snapshot.
@@ -41,6 +42,8 @@ server may restore its cursor through the `DeliveryLog` constructor's `initialSe
 - Invalidation collapse rejects entries from different epochs instead of comparing their sequences.
 - Subscription indexes remain consistent in both stream-to-connection directions.
 - Backoff is deterministic, bounded, and free of clock or random dependencies.
+- Reconnect attempts use an unsigned 32-bit counter and zero-delay policies remain zero at every
+  attempt.
 - Transport-open does not reset retry state until the application marks it stable.
 - Heartbeat sweeps deterministically separate probes from stale connections.
 

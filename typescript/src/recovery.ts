@@ -1,3 +1,5 @@
+import { MAX_INTEROPERABLE_INTEGER } from "./limits.js";
+
 export interface DeliveryCursor {
   readonly epoch: string;
   readonly sequence: number;
@@ -41,7 +43,7 @@ export type DeliveryRecovery<Stream, Payload> =
       readonly earliestAvailableSequence: number;
     };
 
-export const MAX_DELIVERY_SEQUENCE = Number.MAX_SAFE_INTEGER;
+export const MAX_DELIVERY_SEQUENCE = MAX_INTEROPERABLE_INTEGER;
 
 function validateSequence(value: number, name: string): void {
   if (!Number.isSafeInteger(value) || value < 0) {

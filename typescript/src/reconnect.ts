@@ -1,4 +1,5 @@
 import { reconnectDelayMs, type ReconnectBackoffPolicy } from "./backoff.js";
+import { MAX_RECONNECT_ATTEMPT } from "./limits.js";
 
 export type ReconnectStatus =
   | "idle"
@@ -19,8 +20,12 @@ export interface ReconnectSchedule {
 }
 
 function validateAttempt(attempt: number): void {
-  if (!Number.isSafeInteger(attempt) || attempt < 0) {
-    throw new RangeError("attempt must be a non-negative safe integer");
+  if (
+    !Number.isSafeInteger(attempt) ||
+    attempt < 0 ||
+    attempt > MAX_RECONNECT_ATTEMPT
+  ) {
+    throw new RangeError("attempt must be an unsigned 32-bit integer");
   }
 }
 
@@ -42,7 +47,7 @@ export function scheduleReconnectAttempt(
   policy: ReconnectBackoffPolicy,
 ): ReconnectSchedule {
   validateAttempt(state.attempt);
-  if (state.attempt === Number.MAX_SAFE_INTEGER) {
+  if (state.attempt === MAX_RECONNECT_ATTEMPT) {
     throw new RangeError("reconnect attempt is exhausted");
   }
   return {

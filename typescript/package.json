@@ -1,6 +1,6 @@
 {
   "name": "@abrahamahn/realtime-core",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Transport-neutral realtime delivery, recovery, subscription, retry, and liveness state",
   "type": "module",
   "sideEffects": false,
