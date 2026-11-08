@@ -1,4 +1,4 @@
-use crate::{DeliveryCursor, DeliveryCursorTransition, advance_delivery_cursor};
+use crate::cursor::{DeliveryCursor, DeliveryCursorTransition, advance_delivery_cursor};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ClientRecoveryState {

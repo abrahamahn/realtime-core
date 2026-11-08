@@ -1,4 +1,5 @@
-use crate::{RealtimeError, ReconnectBackoffPolicy, reconnect_delay_ms};
+use crate::backoff::{ReconnectBackoffPolicy, reconnect_delay_ms};
+use crate::error::RealtimeError;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReconnectStatus {

@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, HashSet};
 use std::hash::Hash;
 
-use crate::{
-    DeliveryCursor, DeliveryEntry, DeliveryLog, DeliveryRecovery, RealtimeError,
-    SubscriptionRegistry, SubscriptionStats,
-};
+use crate::cursor::DeliveryCursor;
+use crate::error::RealtimeError;
+use crate::recovery::{DeliveryEntry, DeliveryLog, DeliveryRecovery};
+use crate::subscriptions::{SubscriptionRegistry, SubscriptionStats};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DeliveryPlan<Stream, Connection, Payload> {

@@ -1,4 +1,4 @@
-import type { DeliveryCursor } from "./recovery.js";
+import type { DeliveryCursor } from "./cursor.js";
 
 export interface SnapshotEnvelope<Stream, Payload> {
   readonly kind: "snapshot";

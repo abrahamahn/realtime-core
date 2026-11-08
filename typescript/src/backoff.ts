@@ -1,4 +1,4 @@
-import { MAX_RECONNECT_ATTEMPT } from "./limits.js";
+import { validateReconnectAttempt } from "./limits.js";
 
 export interface ReconnectBackoffPolicy {
   readonly baseMs: number;
@@ -9,13 +9,7 @@ export function reconnectDelayMs(
   attempt: number,
   policy: ReconnectBackoffPolicy,
 ): number {
-  if (
-    !Number.isSafeInteger(attempt) ||
-    attempt < 0 ||
-    attempt > MAX_RECONNECT_ATTEMPT
-  ) {
-    throw new RangeError("attempt must be an unsigned 32-bit integer");
-  }
+  validateReconnectAttempt(attempt);
   if (!Number.isSafeInteger(policy.baseMs) || policy.baseMs < 0) {
     throw new RangeError("baseMs must be a non-negative safe integer");
   }

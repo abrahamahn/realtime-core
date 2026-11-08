@@ -1,6 +1,6 @@
+import type { DeliveryCursor } from "./cursor.js";
 import {
   DeliveryLog,
-  type DeliveryCursor,
   type DeliveryEntry,
   type DeliveryRecovery,
 } from "./recovery.js";

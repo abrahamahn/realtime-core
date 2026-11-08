@@ -1,4 +1,4 @@
-use crate::recovery::DeliveryCursor;
+use crate::cursor::DeliveryCursor;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SnapshotEnvelope<Stream, Payload> {

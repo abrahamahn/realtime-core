@@ -1,5 +1,8 @@
 import { reconnectDelayMs, type ReconnectBackoffPolicy } from "./backoff.js";
-import { MAX_RECONNECT_ATTEMPT } from "./limits.js";
+import {
+  MAX_RECONNECT_ATTEMPT,
+  validateReconnectAttempt,
+} from "./limits.js";
 
 export type ReconnectStatus =
   | "idle"
@@ -19,21 +22,11 @@ export interface ReconnectSchedule {
   readonly delayMs: number;
 }
 
-function validateAttempt(attempt: number): void {
-  if (
-    !Number.isSafeInteger(attempt) ||
-    attempt < 0 ||
-    attempt > MAX_RECONNECT_ATTEMPT
-  ) {
-    throw new RangeError("attempt must be an unsigned 32-bit integer");
-  }
-}
-
 function reconnectState(
   attempt: number,
   status: ReconnectStatus,
 ): ReconnectState {
-  validateAttempt(attempt);
+  validateReconnectAttempt(attempt);
   return Object.freeze({ attempt, status });
 }
 
@@ -46,7 +39,7 @@ export function scheduleReconnectAttempt(
   state: ReconnectState,
   policy: ReconnectBackoffPolicy,
 ): ReconnectSchedule {
-  validateAttempt(state.attempt);
+  validateReconnectAttempt(state.attempt);
   if (state.attempt === MAX_RECONNECT_ATTEMPT) {
     throw new RangeError("reconnect attempt is exhausted");
   }
@@ -66,7 +59,7 @@ export function markReconnectOpen(state: ReconnectState): ReconnectState {
 }
 
 export function markReconnectStable(state: ReconnectState): ReconnectState {
-  validateAttempt(state.attempt);
+  validateReconnectAttempt(state.attempt);
   return reconnectState(0, "stable");
 }
 
@@ -74,7 +67,7 @@ export function ensureMinimumReconnectAttempt(
   state: ReconnectState,
   minimumAttempt: number,
 ): ReconnectState {
-  validateAttempt(minimumAttempt);
+  validateReconnectAttempt(minimumAttempt);
   return reconnectState(Math.max(state.attempt, minimumAttempt), state.status);
 }
 

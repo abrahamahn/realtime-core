@@ -1,4 +1,5 @@
-use crate::{MAX_INTEROPERABLE_INTEGER, RealtimeError};
+use crate::error::RealtimeError;
+use crate::limits::MAX_INTEROPERABLE_INTEGER;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ReconnectBackoffPolicy {

@@ -1,4 +1,4 @@
-import { advanceDeliveryCursor, type DeliveryCursor } from "./recovery.js";
+import { advanceDeliveryCursor, type DeliveryCursor } from "./cursor.js";
 
 export interface ClientRecoveryState {
   readonly cursor: DeliveryCursor | null;

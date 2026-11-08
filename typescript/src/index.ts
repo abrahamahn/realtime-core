@@ -1,10 +1,12 @@
 export {
   advanceDeliveryCursor,
-  DeliveryLog,
   isDeliveryCursor,
   MAX_DELIVERY_SEQUENCE,
   type DeliveryCursor,
   type DeliveryCursorTransition,
+} from "./cursor.js";
+export {
+  DeliveryLog,
   type DeliveryEntry,
   type DeliveryLogOptions,
   type DeliveryRecovery,
